@@ -3,6 +3,7 @@
 > A local-first stock analysis terminal. Pulls real-time data via yfinance, synthesizes 20+ technical, fundamental, and sentiment signals into a plain-English verdict with confidence score, AI-generated investment thesis, smart trade levels, portfolio tracking, and price alerts. No subscriptions. No data leaves your machine.
 
 ![Python](https://img.shields.io/badge/Python-3.11+-blue) ![Streamlit](https://img.shields.io/badge/UI-Streamlit-red) ![License](https://img.shields.io/badge/License-MIT-green)
+[![CI](https://github.com/akhilsinghcodes/trade_desk/actions/workflows/ci.yml/badge.svg)](https://github.com/akhilsinghcodes/trade_desk/actions/workflows/ci.yml)
 
 ![TradeDesk Demo](docs/demo.gif)
 

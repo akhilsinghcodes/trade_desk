@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install linter
+        run: pip install ruff
+
+      - name: Ruff lint
+        run: ruff check app/ modules/ --select E,F,W --ignore E501
+
+  syntax-check:
+    name: Syntax check (no heavy deps)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Check all Python files parse
+        run: |
+          find app modules -name "*.py" | xargs python -m py_compile
+          echo "All files compile OK"
+
+  unit-tests:
+    name: Unit tests (pure logic, no network)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test deps
+        run: pip install pytest pandas
+
+      - name: Run tests
+        run: pytest tests/ -v
