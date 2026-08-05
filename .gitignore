@@ -1,0 +1,50 @@
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Personal data (portfolio, watchlist, alerts)
+data/trade_lab.db
+data/portfolio.json
+data/watchlist.json
+data/*.db
+
+# Backtest outputs
+backtests/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Env files
+.env
+.env.*
+*.key
+secrets.json
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Claude Code session files
+.claude/
+
+# Data backups
+data.zip
+*.zip
+data/
+
+# Demo build artifacts (GIF is committed, raw frames are not)
+docs/demo_frames/
