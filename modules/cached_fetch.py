@@ -393,3 +393,42 @@ def cached_news(ticker: str, limit: int, company: str):
             logger.warning(f"Returning stale news for {ticker}")
             return stale
         return None
+
+
+def cached_pmo_rs(ticker: str, period: str = "1y"):
+    from modules.pmo import compute_pmo_rs
+    key = f"{ticker}:pmo_rs:{period}"
+    cached = cache_get(key)
+    if cached is not None:
+        return cached
+    try:
+        data = compute_pmo_rs(ticker, period=period)
+        cache_set(key, data, get_ttl("pmo_rs"))
+        return data
+    except Exception as e:
+        logger.warning(f"Failed to fetch PMO RS for {ticker}: {e}")
+        stale = cache_get_stale(key)
+        if stale is not None:
+            logger.warning(f"Returning stale PMO RS for {ticker}")
+            return stale
+        return None
+
+
+def cached_vol_ratio(ticker: str, df):
+    """Cache wrapper for IV30/RV30 volatility ratio."""
+    from modules.vol_ratio import compute_vol_ratio
+    key = f"{ticker}:vol_ratio"
+    cached = cache_get(key)
+    if cached is not None:
+        return cached
+    try:
+        data = compute_vol_ratio(ticker, df)
+        cache_set(key, data, get_ttl("options"))
+        return data
+    except Exception as e:
+        logger.warning(f"Failed to compute vol ratio for {ticker}: {e}")
+        stale = cache_get_stale(key)
+        if stale is not None:
+            logger.warning(f"Returning stale vol ratio for {ticker}")
+            return stale
+        return None

@@ -29,13 +29,15 @@ from modules.sector_momentum import score_sector_momentum
 from modules.dilution_risk import score_dilution, score_earnings_proximity, get_earnings_proximity
 from modules.altman_z import score_altman_z
 from modules.momentum import score_momentum
+from modules.vol_ratio import score_vol_ratio
+from modules.momentum_signals import compute_coppock, compute_ridge_slope
 from modules.cached_fetch import (
     cached_ohlcv, cached_info, cached_fundamentals,
     cached_analyst, cached_insider, cached_ownership, cached_options,
     cached_earnings_history, cached_short_interest, cached_balance_sheet,
     cached_rel_perf, cached_news, cached_market_context, cached_piotroski,
     cached_valuation_advanced, cached_sector_momentum, cached_dilution_risk,
-    cached_altman_z, cached_momentum,
+    cached_altman_z, cached_momentum, cached_pmo_rs, cached_vol_ratio,
 )
 
 
@@ -52,10 +54,10 @@ def run_analysis(ticker: str, period: str, interval: str = "1d") -> dict:
         Dict with keys: df, info, df_vol, fundamentals, fund_signals, earnings_info,
         analyst_data, insider_data, ownership_data, options_data, earnings_hist,
         short_data, balance_data, rel_perf, rel_series, market_ctx, piotroski_data,
-        valuation_adv, sector_mom, dilution_data, altman_data, momentum_data,
-        scored_articles, tech_summary, verdict_result, swings, pivots, smart_trade,
-        thesis, alert_suggestions, close_price, prev_close, price_change,
-        price_change_pct.
+        valuation_adv, sector_mom, dilution_data, altman_data, momentum_data, vol_ratio_data,
+        pmo_rs_data, coppock_data, ridge_slope_data, scored_articles, tech_summary,
+        verdict_result, swings, pivots, smart_trade, thesis, alert_suggestions, close_price,
+        prev_close, price_change, price_change_pct.
     """
     # ── FETCH ALL DATA (cached) ────────────────────────────────────────────────────
     df = cached_ohlcv(ticker, period)
@@ -83,12 +85,16 @@ def run_analysis(ticker: str, period: str, interval: str = "1d") -> dict:
     dilution_data = cached_dilution_risk(ticker)
     altman_data = cached_altman_z(ticker)
     momentum_data = cached_momentum(ticker)
+    pmo_rs_data = cached_pmo_rs(ticker, period)
+    vol_ratio_data = cached_vol_ratio(ticker, df)
 
     # News — use SQLite cache
     scored_articles = cached_news(ticker, limit=10, company=info.get("shortName", ""))
 
     # Compute scores
     tech_summary = summarize(df)
+    coppock_data = compute_coppock(df)
+    ridge_slope_data = compute_ridge_slope(df)
     vol_sig = volume_signal(df)
     tech_summary["signals"].append(vol_sig)
     tech_summary["signals"].append(score_analyst(analyst_data))
@@ -108,6 +114,7 @@ def run_analysis(ticker: str, period: str, interval: str = "1d") -> dict:
     tech_summary["signals"].append(score_earnings_proximity(earnings_prox))
     tech_summary["signals"].append(score_altman_z(altman_data))
     tech_summary["signals"].append(score_momentum(momentum_data))
+    tech_summary["signals"].append(score_vol_ratio(vol_ratio_data))
 
     verdict_result = combined_score(
         tech_signals=tech_summary["signals"],
@@ -156,6 +163,7 @@ def run_analysis(ticker: str, period: str, interval: str = "1d") -> dict:
         short_pct=short_data.get("short_pct_float"),
         earnings_days_away=earnings_info.get("days_away"),
         sector_trend=sector_mom.get("trend", "unknown"),
+        vix=market_ctx.get("vix"),
     )
 
     # Investment thesis
@@ -216,6 +224,10 @@ def run_analysis(ticker: str, period: str, interval: str = "1d") -> dict:
         "dilution_data": dilution_data,
         "altman_data": altman_data,
         "momentum_data": momentum_data,
+        "vol_ratio_data": vol_ratio_data,
+        "pmo_rs_data": pmo_rs_data,
+        "coppock_data": coppock_data,
+        "ridge_slope_data": ridge_slope_data,
         "scored_articles": scored_articles,
         "tech_summary": tech_summary,
         "verdict_result": verdict_result,
