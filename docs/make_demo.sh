@@ -58,7 +58,10 @@ async def main():
     global frame
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        ctx     = await browser.new_context(viewport={"width": W, "height": H})
+        ctx     = await browser.new_context(
+            viewport={"width": W, "height": H},
+            color_scheme="dark",
+        )
         page    = await ctx.new_page()
 
         print("→ Loading app...")
