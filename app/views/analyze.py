@@ -50,6 +50,10 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
     sector_mom = analysis["sector_mom"]
     altman_data = analysis["altman_data"]
     momentum_data = analysis["momentum_data"]
+    vol_ratio_data = analysis.get("vol_ratio_data", {})
+    pmo_rs_data = analysis.get("pmo_rs_data", {})
+    coppock_data = analysis.get("coppock_data", {})
+    ridge_slope_data = analysis.get("ridge_slope_data", {})
     earnings_info = analysis["earnings_info"]
     scored_articles = analysis["scored_articles"]
     tech_summary = analysis["tech_summary"]
@@ -184,6 +188,8 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
     _cv = smart_trade["conviction"]
     _cv_color = "#4ade80" if _cv == "high" else "#e2c882" if _cv == "medium" else "#f87171"
     _entry_disc = smart_trade["discount_pct"]
+    _pos_size = smart_trade.get("position_size_pct", 100)
+    _pos_size_color = "#e2c882" if _pos_size >= 75 else "#4ade80" if _pos_size >= 50 else "#f87171"
     st_obj.markdown(f"""
 <div class="trade-box">
   <div style="margin-bottom:14px">
@@ -215,6 +221,11 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
       <div class="trade-value" style="color:{_rr_color};font-size:1.4rem;font-weight:700">1 : {_rr}</div>
       <div class="trade-sub">{'⚠️ Poor — avoid' if _rr < 1 else '✓ Acceptable' if _rr < 2 else '✓✓ Good'}</div>
     {'</div></div>' if _rr < 1 else '</div>'}
+    <div class="trade-item">
+      <div class="trade-label" style="opacity:0.7">Position Size</div>
+      <div class="trade-value" style="color:{_pos_size_color};font-size:1.4rem;font-weight:700">{_pos_size}%</div>
+      <div class="trade-sub">VIX-scaled</div>
+    </div>
   </div>
   <div style="margin-top:14px;padding:8px 16px;background:rgba(255,255,255,0.04);border-radius:8px;display:flex;justify-content:center;gap:24px;align-items:center">
     <span style="font-size:0.9rem">Conviction: <strong style="color:{_cv_color};font-size:1rem">{_cv.capitalize()}</strong></span>
@@ -717,6 +728,100 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
                         st_obj.session_state.alerts = alerts_load()
                         st_obj.rerun()
 
+        # Volatility Ratio (IV30/RV30)
+        if vol_ratio_data and (vol_ratio_data.get("iv30") is not None or vol_ratio_data.get("rv30") is not None):
+            with st_obj.expander("📊 Volatility Ratio (IV30/RV30)"):
+                iv30 = vol_ratio_data.get("iv30")
+                rv30 = vol_ratio_data.get("rv30")
+                ratio = vol_ratio_data.get("ratio")
+                interpretation = vol_ratio_data.get("interpretation", "No data")
+
+                col_iv, col_rv, col_ratio = st_obj.columns(3)
+
+                with col_iv:
+                    if iv30 is not None:
+                        st_obj.metric("IV30 (30d ATM)", f"{iv30:.1%}")
+                    else:
+                        st_obj.metric("IV30 (30d ATM)", "N/A", delta="Options unavailable")
+
+                with col_rv:
+                    if rv30 is not None:
+                        st_obj.metric("RV30 (Realized)", f"{rv30:.1%}")
+                    else:
+                        st_obj.metric("RV30 (Realized)", "N/A")
+
+                with col_ratio:
+                    if ratio is not None:
+                        ratio_color = "#f87171" if ratio > 1.3 else "#4ade80" if ratio < 0.8 else "#e2c882"
+                        st_obj.markdown(
+                            f'<div style="text-align:center"><div style="font-size:0.9rem;color:#888">Ratio</div>'
+                            f'<div style="font-size:1.8rem;color:{ratio_color};font-weight:700">{ratio:.2f}</div></div>',
+                            unsafe_allow_html=True
+                        )
+                    else:
+                        st_obj.markdown(
+                            '<div style="text-align:center"><div style="font-size:0.9rem;color:#888">Ratio</div>'
+                            '<div style="font-size:1.8rem;color:#888">N/A</div></div>',
+                            unsafe_allow_html=True
+                        )
+
+                st_obj.divider()
+                st_obj.caption(f"**Interpretation:** {interpretation}")
+
+                if ratio is not None:
+                    if ratio > 1.3:
+                        st_obj.info(
+                            "📉 **Vol overpriced** — Implied vol is high relative to realized vol. "
+                            "Favors premium selling strategies (short calls/puts, call spreads)."
+                        )
+                    elif ratio < 0.8:
+                        st_obj.info(
+                            "📈 **Vol underpriced** — Implied vol is low relative to realized vol. "
+                            "Favors directional strategies or buying options."
+                        )
+                    else:
+                        st_obj.info(
+                            "➡️ **Vol fairly priced** — IV/RV ratio is balanced. "
+                            "Normal options risk/reward environment."
+                        )
+
+        # Momentum Signals
+        if coppock_data or ridge_slope_data:
+            with st_obj.expander("🎯 Momentum Signals"):
+                cols = st_obj.columns(2)
+
+                # Coppock Curve
+                with cols[0]:
+                    if coppock_data:
+                        c_val = coppock_data.get("value", 0.0)
+                        c_trend = coppock_data.get("trend", "neutral")
+                        trend_color = "#4ade80" if c_trend == "bullish" else "#f87171" if c_trend == "bearish" else "#e2c882"
+                        trend_emoji = "📈" if c_trend == "bullish" else "📉" if c_trend == "bearish" else "➡️"
+
+                        st_obj.markdown("**Coppock Curve**")
+                        st_obj.markdown(
+                            f'<span style="color:{trend_color};font-size:1.1rem;font-weight:700">'
+                            f'{trend_emoji} {c_trend.upper()}</span>',
+                            unsafe_allow_html=True
+                        )
+                        st_obj.metric("Value", f"{c_val:.2f}")
+
+                # Ridge Regression Slope
+                with cols[1]:
+                    if ridge_slope_data:
+                        r_slope = ridge_slope_data.get("slope", 0.0)
+                        r_interp = ridge_slope_data.get("interpretation", "neutral")
+                        interp_color = "#4ade80" if r_interp == "uptrend" else "#f87171" if r_interp == "downtrend" else "#e2c882"
+                        interp_emoji = "📈" if r_interp == "uptrend" else "📉" if r_interp == "downtrend" else "➡️"
+
+                        st_obj.markdown("**Ridge Slope (20-bar)**")
+                        st_obj.markdown(
+                            f'<span style="color:{interp_color};font-size:1.1rem;font-weight:700">'
+                            f'{interp_emoji} {r_interp.upper()}</span>',
+                            unsafe_allow_html=True
+                        )
+                        st_obj.metric("Slope", f"{r_slope:.4f}")
+
         # Performance vs S&P 500
         with st_obj.expander("📈 Performance vs S&P 500"):
             from modules.relative_performance import score_relative_performance
@@ -744,3 +849,39 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
                 st_obj.plotly_chart(fig_rel, width="stretch")
             else:
                 st_obj.info("Could not load comparison data.")
+
+        # PMO Relative Strength
+        if pmo_rs_data:
+            with st_obj.expander("📊 PMO Relative Strength vs SPY"):
+                from modules.pmo import score_pmo_rs
+                pmo_label, pmo_status, pmo_text = score_pmo_rs(pmo_rs_data)
+                st_obj.markdown(f"{icon_map.get(pmo_status, '➖')} {pmo_text}")
+
+                if pmo_rs_data.get("rs_norm") is not None:
+                    rs_norm = pmo_rs_data.get("rs_norm", 0)
+                    rs_score = pmo_rs_data.get("rs_score", 0)
+                    trend = pmo_rs_data.get("trend", "neutral")
+                    pmo_val = pmo_rs_data.get("pmo")
+                    spy_pmo_val = pmo_rs_data.get("spy_pmo")
+
+                    # Trend badge color
+                    trend_color = "#4ade80" if trend == "leading" else "#f87171" if trend == "lagging" else "#e2c882"
+
+                    st_obj.markdown(
+                        f'<div class="trade-box"><div class="trade-row">'
+                        f'<div class="trade-item"><div class="trade-label">RS Strength</div>'
+                        f'<div class="trade-value" style="color:{trend_color};font-size:1.4rem;font-weight:700">{int(rs_norm * 100):+d}%</div>'
+                        f'<div style="font-size:0.7rem;opacity:0.5">{trend.upper()}</div></div>'
+                        f'<div class="trade-item"><div class="trade-label">PMO Score Diff</div>'
+                        f'<div class="trade-value">{rs_score:+.2f}</div>'
+                        f'<div style="font-size:0.7rem;opacity:0.5">vs SPY</div></div>'
+                        f'<div class="trade-item"><div class="trade-label">Stock PMO</div>'
+                        f'<div class="trade-value">{f"{pmo_val:.2f}" if pmo_val is not None else "N/A"}</div>'
+                        f'<div style="font-size:0.7rem;opacity:0.5">Price momentum</div></div>'
+                        f'<div class="trade-item"><div class="trade-label">SPY PMO</div>'
+                        f'<div class="trade-value">{f"{spy_pmo_val:.2f}" if spy_pmo_val is not None else "N/A"}</div>'
+                        f'<div style="font-size:0.7rem;opacity:0.5">Market baseline</div></div>'
+                        f'</div></div>', unsafe_allow_html=True
+                    )
+
+                    st_obj.caption("PMO (Price Momentum Oscillator) is a double-smoothed rate-of-change indicator. Positive RS = stock outperforming SPY; negative = underperforming.")

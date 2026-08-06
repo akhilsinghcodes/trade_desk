@@ -27,6 +27,7 @@ def get_smart_trade_strategy(
     short_pct: Optional[float],     # short interest % of float
     earnings_days_away: Optional[int],
     sector_trend: str,              # "uptrend" | "downtrend" | "unknown"
+    vix: Optional[float] = None,    # VIX level for position sizing
 ) -> dict:
     """
     Returns dict with:
@@ -41,6 +42,7 @@ def get_smart_trade_strategy(
     - exit_conditions: list[str] — plain-English exit triggers
     - time_horizon: str
     - conviction: str — "high" | "medium" | "low"
+    - position_size_pct: int — VIX-scaled position sizing (0-100%, rounded to 5%)
     """
 
     # ── Conviction tier ──────────────────────────────────────────────────────────
@@ -245,6 +247,23 @@ def get_smart_trade_strategy(
     else:
         time_horizon = "1–2 weeks (speculative; tight stops)"
 
+    # ── POSITION SIZE SCALING BY VIX ─────────────────────────────────────────────
+    # Interpolate: VIX ≤ 15 → 100%, VIX ≥ 25 → 0%, linear between
+    # Round to nearest 5%
+    position_size_pct = 100  # default to full size
+    if vix is not None:
+        if vix <= 15:
+            position_size_pct = 100.0
+        elif vix >= 25:
+            position_size_pct = 0.0
+        else:
+            # Linear interpolation between 15 and 25
+            position_size_pct = 100.0 - ((vix - 15) / (25 - 15)) * 100.0
+        # Round to nearest 5%
+        position_size_pct = round(position_size_pct / 5) * 5
+    # Clamp to [0, 100]
+    position_size_pct = max(0, min(100, position_size_pct))
+
     return {
         "limit_entry": round(limit_entry, 2),
         "limit_entry_reason": limit_entry_reason,
@@ -258,4 +277,5 @@ def get_smart_trade_strategy(
         "time_horizon": time_horizon,
         "conviction": conviction,
         "discount_pct": round(base_discount_pct * 100, 1),
+        "position_size_pct": int(position_size_pct),
     }
