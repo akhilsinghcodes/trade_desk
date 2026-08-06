@@ -31,9 +31,11 @@
 | **Portfolio** | P&L tracking, daily change, allocation pie chart, holdings correlation matrix |
 | **Watchlist** | Auto-refresh (1/5/15 min), quick verdict per ticker |
 | **Alerts** | Price alerts with Mac desktop push notifications (runs in background) |
-| **Backtest** | SMA crossover strategy backtest with win rate and Sharpe ratio |
+| **Screener** | Scan up to 20 tickers in parallel — ranked by composite score, sortable, CSV export, click-through to Analyze |
+| **Backtest** | SMA crossover walk-forward backtest — win rate, Sharpe ratio, benchmark vs SPY, transaction cost simulation |
 | **ELI5** | Plain-English glossary for every term and chart in the app |
-| **Caching** | SQLite-backed cache with per-data-type TTLs — fast repeat loads |
+| **Caching** | SQLite-backed cache with per-data-type TTLs (config/settings.yaml) — fast repeat loads, stale-on-error fallback |
+| **Config** | Weights, thresholds, and TTLs tunable via `config/settings.yaml` — no code changes required |
 
 ---
 
@@ -73,23 +75,35 @@ Open [http://localhost:8501](http://localhost:8501).
 ## Project Structure
 
 ```
-trade_desk/
+trade_lab/
 ├── app/
-│   └── main.py              # Streamlit app entry point
+│   ├── main.py              # Entry point — page config, sidebar, routing
+│   ├── views/               # One file per page
+│   │   ├── analyze.py       # Main analysis page (verdict, score bars, tabs)
+│   │   ├── screener.py      # Multi-ticker screener
+│   │   ├── watchlist.py     # Watchlist with auto-refresh
+│   │   ├── portfolio.py     # P&L tracking + correlation matrix
+│   │   ├── alerts.py        # Price alerts
+│   │   └── eli5.py          # Glossary
+│   └── services/
+│       └── analysis.py      # Orchestrates all signal modules → analysis dict
 ├── modules/
-│   ├── cached_fetch.py      # SQLite-cached API wrappers
+│   ├── cached_fetch.py      # SQLite-cached API wrappers with stale-on-error
 │   ├── db.py                # SQLite layer (watchlist, portfolio, alerts, cache)
-│   ├── score.py             # Combined signal scoring
-│   ├── trade_strategy.py    # Smart trade levels (entry, SL, TP, exit conditions)
+│   ├── score.py             # Continuous [-1,1] scoring with conflict detection
+│   ├── config.py            # YAML config loader (weights, thresholds, TTLs)
+│   ├── backtest.py          # Walk-forward SMA backtest + SPY benchmark
+│   ├── trade_strategy.py    # Smart trade levels (entry, SL, TP)
 │   ├── thesis.py            # AI investment thesis generator
 │   ├── piotroski.py         # Piotroski F-Score
 │   ├── altman_z.py          # Altman Z-Score (bankruptcy risk)
 │   ├── momentum.py          # Multi-timeframe price momentum
 │   ├── market_context.py    # VIX + 52-week rank
 │   ├── sector_momentum.py   # Sector ETF trend
-│   ├── eli5.py              # Plain-English glossary (60+ terms)
-│   └── ...                  # 25+ other signal modules
-├── data/                    # Local SQLite DB + JSON (gitignored)
+│   └── ...                  # 20+ other signal modules
+├── config/
+│   └── settings.yaml        # Weights, thresholds, cache TTLs
+├── data/                    # Local SQLite DB (gitignored)
 ├── requirements.txt
 └── README.md
 ```

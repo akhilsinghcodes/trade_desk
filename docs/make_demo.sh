@@ -58,7 +58,10 @@ async def main():
     global frame
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        ctx     = await browser.new_context(viewport={"width": W, "height": H})
+        ctx     = await browser.new_context(
+            viewport={"width": W, "height": H},
+            color_scheme="dark",
+        )
         page    = await ctx.new_page()
 
         print("→ Loading app...")
@@ -82,68 +85,50 @@ async def main():
         await page.wait_for_timeout(8000)   # wait for full data load
         await shot(page, "analyze_verdict", 3)
 
-        # scroll to trade strategy
-        await page.evaluate("window.scrollTo(0, 600)")
+        # scroll to trade strategy + thesis (always visible)
+        await page.evaluate("window.scrollTo(0, 500)")
         await page.wait_for_timeout(600)
         await shot(page, "trade_strategy", 2)
 
-        # open AI Thesis
-        thesis = page.get_by_text("AI Thesis", exact=False).first
-        if await thesis.count() > 0:
-            await thesis.click()
-            await page.wait_for_timeout(800)
-            await shot(page, "thesis", 2)
+        # helper: click a tab by its label text
+        async def click_tab(label):
+            tab = page.get_by_role("tab", name=label, exact=False).first
+            if await tab.count() > 0:
+                await tab.click()
+                await page.wait_for_timeout(1500)
 
-        # open exit strategy
-        exit_exp = page.get_by_text("Exit Strategy", exact=False).first
-        if await exit_exp.count() > 0:
-            await exit_exp.click()
-            await page.wait_for_timeout(600)
-            await shot(page, "exit_strategy", 2)
-
-        # open price chart
+        # Chart tab (default, scroll to chart)
         await page.evaluate("window.scrollTo(0, 0)")
-        chart_exp = page.get_by_text("Price chart", exact=False).first
-        if await chart_exp.count() > 0:
-            await chart_exp.click()
-            await page.wait_for_timeout(1500)
-            await page.evaluate("window.scrollTo(0, 700)")
-            await shot(page, "price_chart", 3)
+        await click_tab("Chart")
+        await page.evaluate("window.scrollTo(0, 700)")
+        await shot(page, "price_chart", 3)
 
-        # open fundamentals
-        fund_exp = page.get_by_text("Fundamentals", exact=False).first
-        if await fund_exp.count() > 0:
-            await fund_exp.click()
-            await page.wait_for_timeout(800)
-            await page.evaluate("window.scrollTo(0, 1200)")
-            await shot(page, "fundamentals", 2)
-            await page.evaluate("window.scrollTo(0, 2000)")
-            await shot(page, "piotroski_altman", 2)
+        # Fundamentals tab
+        await page.evaluate("window.scrollTo(0, 0)")
+        await click_tab("Fundamentals")
+        await page.evaluate("window.scrollTo(0, 700)")
+        await shot(page, "fundamentals", 2)
+        await page.evaluate("window.scrollTo(0, 1400)")
+        await shot(page, "piotroski_altman", 2)
 
-        # analyst section
-        analyst_exp = page.get_by_text("Analyst", exact=False).first
-        if await analyst_exp.count() > 0:
-            await analyst_exp.click()
-            await page.wait_for_timeout(800)
-            await page.evaluate("window.scrollTo(0, 3000)")
-            await shot(page, "analyst", 2)
+        # Analyst & Insider tab
+        await page.evaluate("window.scrollTo(0, 0)")
+        await click_tab("Analyst")
+        await page.evaluate("window.scrollTo(0, 600)")
+        await shot(page, "analyst", 2)
 
-        # news/sentiment
-        news_exp = page.get_by_text("News", exact=False).first
-        if await news_exp.count() > 0:
-            await news_exp.click()
-            await page.wait_for_timeout(800)
-            await page.evaluate("window.scrollTo(0, 4000)")
-            await shot(page, "news_sentiment", 2)
+        # News tab
+        await page.evaluate("window.scrollTo(0, 0)")
+        await click_tab("News")
+        await page.evaluate("window.scrollTo(0, 600)")
+        await shot(page, "news_sentiment", 2)
 
-        # backtest
-        await page.evaluate("window.scrollTo(0, 9999)")
-        await page.wait_for_timeout(500)
-        backtest_exp = page.get_by_text("Backtest", exact=False).first
-        if await backtest_exp.count() > 0:
-            await backtest_exp.click()
-            await page.wait_for_timeout(1500)
-            await shot(page, "backtest", 2)
+        # Backtest tab
+        await page.evaluate("window.scrollTo(0, 0)")
+        await click_tab("Backtest")
+        await page.wait_for_timeout(2000)
+        await page.evaluate("window.scrollTo(0, 600)")
+        await shot(page, "backtest", 2)
 
         # ── Analyze: JPM (different sector) ───────────────────────────────────
         print("→ Analyze — JPM")
@@ -155,26 +140,30 @@ async def main():
         await page.wait_for_timeout(7000)
         await shot(page, "jpm_verdict", 2)
 
+        # helper: navigate sidebar by label text
+        # Streamlit radio inputs have overlay divs — use JS to set value + dispatch event
+        pages_list = ["📊 Analyze", "⭐ Watchlist", "🔍 Screener", "💼 Portfolio", "🔔 Alerts", "📚 ELI5"]
+        async def nav_to(label):
+            await page.evaluate("window.scrollTo(0, 0)")
+            # Click the div that contains the label text (the styled radio label)
+            await page.locator(f"[data-testid='stRadio'] label").filter(has_text=label).first.click(force=True)
+            await page.wait_for_timeout(3000)
+
         # ── Watchlist ──────────────────────────────────────────────────────────
         print("→ Watchlist")
-        await page.evaluate("window.scrollTo(0, 0)")
-        watchlist_radio = page.get_by_label("⭐ Watchlist")
-        if await watchlist_radio.count() > 0:
-            await watchlist_radio.click()
-        else:
-            # fallback: click radio by position
-            radios = await page.query_selector_all("input[type=radio]")
-            if len(radios) > 1:
-                await radios[1].click()
-        await page.wait_for_timeout(4000)
+        await nav_to("⭐ Watchlist")
         await shot(page, "watchlist", 3)
+
+        # ── Screener ───────────────────────────────────────────────────────────
+        print("→ Screener")
+        await nav_to("🔍 Screener")
+        await page.wait_for_timeout(6000)  # parallel fetch takes time
+        await shot(page, "screener", 3)
 
         # ── Portfolio ──────────────────────────────────────────────────────────
         print("→ Portfolio")
-        radios = await page.query_selector_all("input[type=radio]")
-        if len(radios) > 2:
-            await radios[2].click()
-        await page.wait_for_timeout(5000)
+        await nav_to("💼 Portfolio")
+        await page.wait_for_timeout(3000)
         await shot(page, "portfolio_summary", 2)
         await page.evaluate("window.scrollTo(0, 600)")
         await shot(page, "portfolio_positions", 2)
@@ -184,16 +173,12 @@ async def main():
 
         # ── Alerts ────────────────────────────────────────────────────────────
         print("→ Alerts")
-        if len(radios) > 3:
-            await radios[3].click()
-        await page.wait_for_timeout(2000)
+        await nav_to("🔔 Alerts")
         await shot(page, "alerts", 2)
 
         # ── ELI5 ─────────────────────────────────────────────────────────────
         print("→ ELI5")
-        if len(radios) > 4:
-            await radios[4].click()
-        await page.wait_for_timeout(2000)
+        await nav_to("📚 ELI5")
         await shot(page, "eli5", 2)
         await page.evaluate("window.scrollTo(0, 600)")
         await shot(page, "eli5_terms", 2)
@@ -203,3 +188,7 @@ async def main():
 
 asyncio.run(main())
 PYEOF
+
+echo "▶ Assembling GIF with gifski..."
+gifski --fps 4 --width 1400 --output "$OUT_GIF" "$FRAMES_DIR"/*.png
+echo "✓ GIF written to $OUT_GIF"
