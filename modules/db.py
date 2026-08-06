@@ -200,6 +200,16 @@ def cache_get(key: str):
         return json.loads(row["data"])
 
 
+def cache_get_stale(key: str):
+    """Return cached value even if expired (for stale-on-error fallback). Returns None if missing."""
+    init_db()
+    with db() as conn:
+        row = conn.execute("SELECT data FROM api_cache WHERE cache_key = ?", (key,)).fetchone()
+        if row is None:
+            return None
+        return json.loads(row["data"])
+
+
 def cache_set(key: str, value, ttl_seconds: float = 900):
     """Store value with TTL. Default 15 minutes."""
     init_db()
