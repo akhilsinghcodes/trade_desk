@@ -1062,12 +1062,12 @@ with st.expander("📈 Price chart & technical indicators"):
     st.divider()
     st.caption("Technical signals")
     for label, status, text in tech_summary["signals"]:
-        st.markdown(f"{icon_map.get(status, "➖")} **{label}:** {text}")
+        st.markdown(f"{icon_map.get(status, '➖')} **{label}:** {text}")
 
 with st.expander("🏢 Fundamentals — is the company healthy?"):
     if fund_signals:
         for label, status, text in fund_signals:
-            st.markdown(f"{icon_map.get(status, "➖")} **{label}:** {text}")
+            st.markdown(f"{icon_map.get(status, '➖')} **{label}:** {text}")
     else:
         st.info("No fundamental data available.")
 
@@ -1117,7 +1117,7 @@ with st.expander("🏢 Fundamentals — is the company healthy?"):
         st.divider()
         st.caption("Balance sheet trends (YoY)")
         bs_label, bs_status, bs_text = score_balance_sheet(balance_data)
-        st.markdown(f"{icon_map.get(bs_status, "➖")} {bs_text}")
+        st.markdown(f"{icon_map.get(bs_status, '➖')} {bs_text}")
 
         years = balance_data["years"]
         debt = balance_data.get("total_debt", [])
@@ -1148,7 +1148,7 @@ with st.expander("🏢 Fundamentals — is the company healthy?"):
         st.divider()
         st.caption("Piotroski F-Score — financial health (0-9)")
         p_label, p_status, p_text = score_piotroski(piotroski_data)
-        st.markdown(f"{icon_map.get(p_status, "➖")} {p_text}")
+        st.markdown(f"{icon_map.get(p_status, '➖')} {p_text}")
         components = piotroski_data.get("components", {})
         if components:
             criteria_groups = {
@@ -1171,7 +1171,7 @@ with st.expander("🏢 Fundamentals — is the company healthy?"):
     st.divider()
     st.caption("Advanced valuation")
     av_label, av_status, av_text = score_valuation_advanced(valuation_adv)
-    st.markdown(f"{icon_map.get(av_status, "➖")} {av_text}")
+    st.markdown(f"{icon_map.get(av_status, '➖')} {av_text}")
     fcf_yield = valuation_adv.get("fcf_yield")
     ev_ebitda = valuation_adv.get("ev_ebitda")
     fcf_interp = valuation_adv.get("fcf_interpretation", "unknown")
@@ -1195,7 +1195,7 @@ with st.expander("🏢 Fundamentals — is the company healthy?"):
     st.divider()
     st.caption("Altman Z-Score — bankruptcy risk")
     az_label, az_status, az_text = score_altman_z(altman_data)
-    st.markdown(f"{icon_map.get(az_status, "➖")} {az_text}")
+    st.markdown(f"{icon_map.get(az_status, '➖')} {az_text}")
     az_score = altman_data.get("z_score")
     az_zone = altman_data.get("zone", "unknown")
     if az_score is not None:
@@ -1217,7 +1217,7 @@ with st.expander("🏢 Fundamentals — is the company healthy?"):
     st.divider()
     st.caption("Price momentum")
     mo_label, mo_status, mo_text = score_momentum(momentum_data)
-    st.markdown(f"{icon_map.get(mo_status, "➖")} {mo_text}")
+    st.markdown(f"{icon_map.get(mo_status, '➖')} {mo_text}")
     mo_fields = [("1 Month", "ret_1mo"), ("3 Month", "ret_3mo"), ("6 Month", "ret_6mo"), ("1 Year", "ret_1yr")]
     mo_cols = st.columns(4)
     for i, (lbl, key) in enumerate(mo_fields):
@@ -1266,7 +1266,7 @@ with st.expander("🔬 Analyst, Insider & Market Intelligence"):
     pcr = options_data.get("put_call_ratio")
     if pcr is not None:
         o_sig, o_status, o_text = score_options(options_data)
-        st.markdown(f"{icon_map.get(o_status, "➖")} **Put/Call Ratio {pcr}** — {o_text}")
+        st.markdown(f"{icon_map.get(o_status, '➖')} **Put/Call Ratio {pcr}** — {o_text}")
         st.caption("Ratio > 1.2 = fearful market (contrarian buy). Ratio < 0.6 = greedy market (contrarian caution).")
     else:
         st.info("No options data available.")
