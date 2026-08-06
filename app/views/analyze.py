@@ -1,5 +1,4 @@
 """Analyze page."""
-import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
 import sys
@@ -14,7 +13,7 @@ from modules.db import alerts_load, alerts_add
 from app.services.analysis import run_analysis
 
 
-color_map = {"green": "#00c853", "red": "#ff1744", "orange": "#ff9100"}
+color_map = {"green": "#4ade80", "red": "#f87171", "orange": "#e2c882"}
 icon_map = {"good": "✅", "warning": "⚠️", "neutral": "➖", "unknown": "➖"}
 sent_icon = {"positive": "🟢", "negative": "🔴", "neutral": "🟡", "unknown": "⚪"}
 
@@ -56,17 +55,15 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
     tech_summary = analysis["tech_summary"]
     verdict_result = analysis["verdict_result"]
     swings = analysis["swings"]
-    pivots = analysis["pivots"]
     smart_trade = analysis["smart_trade"]
     thesis = analysis["thesis"]
     alert_suggestions = analysis["alert_suggestions"]
     close_price = analysis["close_price"]
-    prev_close = analysis["prev_close"]
     price_change = analysis["price_change"]
     price_change_pct = analysis["price_change_pct"]
 
     # Price data
-    price_color = "#00c853" if price_change >= 0 else "#ff1744"
+    price_color = "#4ade80" if price_change >= 0 else "#f87171"
     price_sign = "+" if price_change >= 0 else ""
 
     v_hex = color_map.get(verdict_result["color"], "#888888")
@@ -81,6 +78,32 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
     week_low = info.get("fiftyTwoWeekLow", "N/A")
     sector = info.get("sector", "")
 
+    # Build earnings chip
+    earnings_date_chip = ""
+    if earnings_info.get("date"):
+        days = earnings_info.get("days_away")
+        if days is not None and days <= 14:
+            earns_color = "#e2c882"
+            earns_label = f"⚡ Earnings {earnings_info['date']} ({days}d)"
+        elif days is not None and days <= 60:
+            earns_color = "#e2c882"
+            earns_label = f"📅 Earnings {earnings_info['date']}"
+        else:
+            earns_color = "rgba(255,255,255,0.3)"
+            earns_label = f"Earnings {earnings_info['date']}"
+        earnings_date_chip = f'<span class="meta-chip" style="color:{earns_color}">{earns_label}</span>'
+
+    analyst_upside_html = ""
+    if analyst_data:
+        targets = analyst_data.get("price_targets", {})
+        upside = targets.get("upside_pct")
+        mean_target = targets.get("mean")
+        consensus = analyst_data.get("consensus", "")
+        if mean_target and upside is not None:
+            up_color = "#4ade80" if upside > 5 else "#f87171" if upside < -5 else "#e2c882"
+            up_sign = "+" if upside >= 0 else ""
+            analyst_upside_html = f'<div style="font-size:0.82rem;margin-top:4px;opacity:0.75">Analysts: <span style="color:{up_color};font-weight:600">${mean_target:.0f} avg target ({up_sign}{upside:.1f}% upside)</span> · {consensus} consensus</div>'
+
     st_obj.markdown(f"""
 <div class="company-name">{info.get('shortName', ticker)} &nbsp;·&nbsp; {ticker}
   {f'&nbsp;·&nbsp; {sector}' if sector else ''}
@@ -93,14 +116,10 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
   <span class="meta-chip">Mkt Cap {mc}</span>
   <span class="meta-chip">P/E {pe}</span>
   <span class="meta-chip">52W {week_low} – {week_high}</span>
+  {earnings_date_chip}
 </div>
+{analyst_upside_html}
 """, unsafe_allow_html=True)
-
-    # Earnings warning banner
-    if earnings_info.get("warning"):
-        st_obj.warning(f"⚠️ **Earnings Alert:** {earnings_info['text']} (Date: {earnings_info['date']})")
-    elif earnings_info.get("days_away") and earnings_info["days_away"] <= 30:
-        st_obj.info(f"📅 {earnings_info['text']}")
 
     # ── SECTION 2: VERDICT HERO ───────────────────────────────────────────────────
     # Build 3 top signal bullets (most impactful signals across all layers)
@@ -117,28 +136,29 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
         for icon, text in top_bullets
     )
 
-    # Score bars
-    def bar_html(score, label, weight):
+    # Score bars — each category has a fixed color
+    def bar_html(score, label, weight, cat_color):
         pct = int((score + 1) / 2 * 100)
-        clr = "#00c853" if score > 0.2 else "#ff1744" if score < -0.2 else "#ff9100"
         return (f'<div class="score-bar-item">'
                 f'<div class="score-bar-label">{label} <span style="opacity:0.4">({weight})</span></div>'
-                f'<div class="score-bar-track"><div class="score-bar-fill" style="width:{pct}%;background:{clr}"></div></div>'
-                f'<div class="score-bar-value">{score:+.2f}</div>'
+                f'<div class="score-bar-track"><div class="score-bar-fill" style="width:{pct}%;background:{cat_color}"></div></div>'
+                f'<div class="score-bar-value" style="color:{cat_color}">{score:+.2f}</div>'
                 f'</div>')
 
     bars = (
-        bar_html(bd["technical"], "Technical", "40%") +
-        bar_html(bd["fundamental"], "Fundamental", "35%") +
-        bar_html(bd["sentiment"], "Sentiment", "25%")
+        bar_html(bd["technical"], "Technical", "40%", "#e2c882") +
+        bar_html(bd["fundamental"], "Fundamental", "35%", "#4ade80") +
+        bar_html(bd["sentiment"], "Sentiment", "25%", "#818cf8")
     )
 
     st_obj.markdown(f"""
 <div class="verdict-hero" style="background:{v_bg}; border: 1px solid {v_hex}30;">
   <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:24px;">
     <div>
-      <div class="verdict-word" style="color:{v_hex}">{verdict_result["verdict"]}</div>
-      <div class="verdict-confidence">Confidence {confidence_pct}%</div>
+      <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;">
+        <div class="verdict-word" style="color:{v_hex}">{verdict_result["verdict"]}</div>
+        <div style="font-size:1.1rem;font-weight:500;color:rgba(255,255,255,0.5);padding:4px 14px;border:1px solid rgba(255,255,255,0.15);border-radius:4px">{confidence_pct}% confident</div>
+      </div>
     </div>
     <div style="flex:1; min-width:260px; max-width:480px;">
       {bullets_html}
@@ -150,45 +170,56 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
 </div>
 """, unsafe_allow_html=True)
 
+    one_liner = thesis.get("one_liner", "")
+    if one_liner:
+        st_obj.markdown(f"""
+<div style="padding:10px 16px;background:rgba(255,255,255,0.04);border-radius:8px;margin-bottom:12px;border-left:3px solid {v_hex}60;font-size:0.9rem;opacity:0.85;font-style:italic">
+  🧠 {one_liner}
+</div>
+""", unsafe_allow_html=True)
+
     # ── SECTION 3: SMART TRADE STRATEGY ──────────────────────────────────────────
     _rr = smart_trade["risk_reward"]
-    _rr_color = "#00c853" if _rr >= 2 else "#ff9100" if _rr >= 1 else "#ff1744"
+    _rr_color = "#4ade80" if _rr >= 2 else "#e2c882" if _rr >= 1 else "#f87171"
     _cv = smart_trade["conviction"]
-    _cv_color = "#00c853" if _cv == "high" else "#ff9100" if _cv == "medium" else "#ff1744"
+    _cv_color = "#4ade80" if _cv == "high" else "#e2c882" if _cv == "medium" else "#f87171"
     _entry_disc = smart_trade["discount_pct"]
     st_obj.markdown(f"""
 <div class="trade-box">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-    <div style="font-size:0.75rem;opacity:0.45;text-transform:uppercase;letter-spacing:0.06em">Smart Trade Strategy</div>
-    <div style="font-size:0.75rem">Conviction: <span style="color:{_cv_color};font-weight:600">{_cv.upper()}</span>
-    &nbsp;·&nbsp; Horizon: <span style="opacity:0.7">{smart_trade['time_horizon']}</span></div>
+  <div style="margin-bottom:14px">
+    <div style="font-size:0.75rem;opacity:0.45;letter-spacing:0.06em">Smart trade strategy</div>
   </div>
   <div class="trade-row">
     <div class="trade-item">
-      <div class="trade-label">Limit Entry</div>
-      <div class="trade-value" style="color:#4fc3f7">${smart_trade['limit_entry']:.2f}</div>
+      <div class="trade-label" style="opacity:0.7">Limit Entry</div>
+      <div class="trade-value" style="color:#e2c882;font-size:1.4rem;font-weight:700">${smart_trade['limit_entry']:.2f}</div>
       <div class="trade-sub">−{_entry_disc:.1f}% from now</div>
     </div>
     <div class="trade-item">
-      <div class="trade-label">Stop Loss</div>
-      <div class="trade-value" style="color:#ff1744">${smart_trade['stop_loss']:.2f}</div>
+      <div class="trade-label" style="opacity:0.7">Stop Loss</div>
+      <div class="trade-value" style="color:#f87171;font-size:1.4rem;font-weight:700">${smart_trade['stop_loss']:.2f}</div>
       <div class="trade-sub" style="font-size:0.7rem;opacity:0.5">{smart_trade['stop_loss_reason'][:30]}</div>
     </div>
     <div class="trade-item">
-      <div class="trade-label">Take Profit 1</div>
-      <div class="trade-value" style="color:#00c853">${smart_trade['take_profit_1']:.2f}</div>
+      <div class="trade-label" style="opacity:0.7">Take Profit 1</div>
+      <div class="trade-value" style="color:#4ade80;font-size:1.4rem;font-weight:700">${smart_trade['take_profit_1']:.2f}</div>
       <div class="trade-sub">Take 50% here</div>
     </div>
     <div class="trade-item">
-      <div class="trade-label">Take Profit 2</div>
-      <div class="trade-value" style="color:#00c853">${smart_trade['take_profit_2']:.2f}</div>
+      <div class="trade-label" style="opacity:0.7">Take Profit 2</div>
+      <div class="trade-value" style="color:#4ade80;font-size:1.4rem;font-weight:700">${smart_trade['take_profit_2']:.2f}</div>
       <div class="trade-sub">Let rest run</div>
     </div>
-    <div class="trade-item">
-      <div class="trade-label">Risk / Reward</div>
-      <div class="trade-value" style="color:{_rr_color}">1 : {_rr}</div>
-      <div class="trade-sub">{'Good' if _rr >= 2 else 'Acceptable' if _rr >= 1 else 'Poor'}</div>
-    </div>
+    {'<div style="background:rgba(255,23,68,0.08);border-radius:8px;padding:4px;border:1px solid rgba(255,23,68,0.3)"><div class="trade-item">' if _rr < 1 else '<div class="trade-item">'}
+      <div class="trade-label" style="opacity:0.7">Risk / Reward</div>
+      <div class="trade-value" style="color:{_rr_color};font-size:1.4rem;font-weight:700">1 : {_rr}</div>
+      <div class="trade-sub">{'⚠️ Poor — avoid' if _rr < 1 else '✓ Acceptable' if _rr < 2 else '✓✓ Good'}</div>
+    {'</div></div>' if _rr < 1 else '</div>'}
+  </div>
+  <div style="margin-top:14px;padding:8px 16px;background:rgba(255,255,255,0.04);border-radius:8px;display:flex;justify-content:center;gap:24px;align-items:center">
+    <span style="font-size:0.9rem">Conviction: <strong style="color:{_cv_color};font-size:1rem">{_cv.capitalize()}</strong></span>
+    <span style="opacity:0.3">·</span>
+    <span style="font-size:0.9rem;opacity:0.7">Horizon: {smart_trade['time_horizon']}</span>
   </div>
   <div style="font-size:0.75rem;opacity:0.45;margin-top:10px">
     Entry rationale: {smart_trade['limit_entry_reason']}
@@ -196,62 +227,12 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
 </div>
 """, unsafe_allow_html=True)
 
-    # Exit strategy
-    with st_obj.expander("🚪 Exit Strategy & Conditions"):
-        st_obj.markdown(f"**TP rationale:** {smart_trade['take_profit_reason']}" if smart_trade['take_profit_reason'] else "")
-        for cond in smart_trade["exit_conditions"]:
-            icon = "🛑" if "stop" in cond.lower() or "drops below" in cond.lower() else "💰" if "profit" in cond.lower() or "tp" in cond.lower() else "⚠️"
-            safe_cond = cond.replace("$", "\\$")
-            st_obj.markdown(f"{icon} {safe_cond}")
+    # ── SECTION 4: TABS FOR DRILL-DOWNS ────────────────────────────────────────────────────
+    tab_chart, tab_fund, tab_analyst, tab_news, tab_backtest, tab_more = st_obj.tabs([
+        "📈 Chart", "🏢 Fundamentals", "🔬 Analyst & Insider", "📰 News", "🔁 Backtest", "⚙️ More"
+    ])
 
-    # ── ALERT SUGGESTIONS ────────────────────────────────────────────────────
-    with st_obj.expander(f"🧠 AI Thesis — {thesis.get('headline', ticker)}"):
-        one_liner = thesis.get("one_liner", "")
-        if one_liner:
-            st_obj.markdown(f"*{one_liner}*")
-            st_obj.divider()
-        col_bull, col_bear = st_obj.columns(2)
-        with col_bull:
-            st_obj.caption("Bull case")
-            for pt in thesis.get("bull_points", []):
-                st_obj.markdown(pt)
-        with col_bear:
-            st_obj.caption("Bear case")
-            for pt in thesis.get("bear_points", []):
-                st_obj.markdown(pt)
-        if thesis.get("key_catalyst") or thesis.get("key_risk"):
-            st_obj.divider()
-            kc1, kc2 = st_obj.columns(2)
-            if thesis.get("key_catalyst"):
-                kc1.markdown(f"**🚀 Key catalyst:** {thesis['key_catalyst']}")
-            if thesis.get("key_risk"):
-                kc2.markdown(f"**⚠️ Key risk:** {thesis['key_risk']}")
-
-    if alert_suggestions:
-        with st_obj.expander(f"🔔 Suggested Alerts for {ticker} ({len(alert_suggestions)} suggestions)"):
-            st_obj.caption("Based on support/resistance levels and analyst targets. Click to add.")
-            existing_alert_prices = {a["target_price"] for a in alerts_load() if a["ticker"] == ticker}
-            for sug in alert_suggestions:
-                priority_color = "#00c853" if sug["priority"] == "high" else "#ff9100" if sug["priority"] == "medium" else "#888"
-                direction_arrow = "▲" if sug["direction"] == "above" else "▼"
-                already_set = sug["target_price"] in existing_alert_prices
-                c1, c2 = st_obj.columns([4, 1])
-                c1.markdown(
-                    f'<span style="color:{priority_color};font-size:0.8rem;font-weight:600">{sug["priority"].upper()}</span> '
-                    f'<span style="font-family:\'JetBrains Mono\',monospace">{direction_arrow} ${sug["target_price"]}</span> '
-                    f'— {sug["reason"]}',
-                    unsafe_allow_html=True
-                )
-                if already_set:
-                    c2.caption("✓ Set")
-                elif c2.button("Add", key=f"sug_{sug['target_price']}_{sug['direction']}"):
-                    alerts_add(ticker, sug["target_price"], sug["direction"],
-                               note=f"Auto: {sug['reason'][:50]}")
-                    st_obj.session_state.alerts = alerts_load()
-                    st_obj.rerun()
-
-    # ── SECTION 4: DRILL-DOWNS ────────────────────────────────────────────────────
-    with st_obj.expander("📈 Price chart & technical indicators"):
+    with tab_chart:
         fig = go.Figure()
         fig.add_trace(go.Candlestick(
             x=df.index, open=df["open"], high=df["high"],
@@ -266,8 +247,8 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
                                       showticklabels=False, range=[0, df["volume"].max() * 5]))
 
         if show_sma:
-            fig.add_trace(go.Scatter(x=df.index, y=df["sma20"], name="SMA20", line=dict(color="#ff9100", width=1)))
-            fig.add_trace(go.Scatter(x=df.index, y=df["sma50"], name="SMA50", line=dict(color="#4fc3f7", width=1)))
+            fig.add_trace(go.Scatter(x=df.index, y=df["sma20"], name="SMA20", line=dict(color="#e2c882", width=1)))
+            fig.add_trace(go.Scatter(x=df.index, y=df["sma50"], name="SMA50", line=dict(color="#e2c882", width=1)))
         if show_bb:
             fig.add_trace(go.Scatter(x=df.index, y=df["bb_upper"], name="BB Upper", line=dict(color="rgba(150,150,150,0.5)", dash="dot", width=1)))
             fig.add_trace(go.Scatter(x=df.index, y=df["bb_lower"], name="BB Lower", line=dict(color="rgba(150,150,150,0.5)", dash="dot", width=1), fill="tonexty", fillcolor="rgba(150,150,150,0.05)"))
@@ -298,7 +279,7 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
             st_obj.plotly_chart(fig_rsi, width="stretch")
         with col_macd:
             fig_macd = go.Figure()
-            fig_macd.add_trace(go.Scatter(x=df.index, y=df["macd"], name="MACD", line=dict(color="#4fc3f7", width=1.5)))
+            fig_macd.add_trace(go.Scatter(x=df.index, y=df["macd"], name="MACD", line=dict(color="#e2c882", width=1.5)))
             fig_macd.add_trace(go.Scatter(x=df.index, y=df["macd_signal"], name="Signal", line=dict(color="#ff7043", width=1.5)))
             fig_macd.update_layout(
                 title="MACD", height=220, margin=dict(t=30,b=10),
@@ -312,7 +293,7 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
         for label, status, text in tech_summary["signals"]:
             st_obj.markdown(f"{icon_map.get(status, '➖')} **{label}:** {text}")
 
-    with st_obj.expander("🏢 Fundamentals — is the company healthy?"):
+    with tab_fund:
         if fund_signals:
             for label, status, text in fund_signals:
                 st_obj.markdown(f"{icon_map.get(status, '➖')} **{label}:** {text}")
@@ -381,7 +362,7 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
                 fig_bs.add_trace(go.Bar(name="Cash ($B)", x=years, y=cash, marker_color="rgba(0,200,83,0.7)"))
             if any(v is not None for v in revenue):
                 fig_bs.add_trace(go.Scatter(name="Revenue ($B)", x=years, y=revenue,
-                                            line=dict(color="#4fc3f7", width=2), yaxis="y2"))
+                                            line=dict(color="#e2c882", width=2), yaxis="y2"))
             fig_bs.update_layout(
                 barmode="group", height=220, margin=dict(t=10, b=10),
                 paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
@@ -428,7 +409,7 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
         ev_ebitda = valuation_adv.get("ev_ebitda")
         fcf_interp = valuation_adv.get("fcf_interpretation", "unknown")
         ev_interp = valuation_adv.get("ev_ebitda_interpretation", "unknown")
-        interp_color = {"cheap": "#00c853", "fair": "#ff9100", "expensive": "#ff1744", "unknown": "#888"}
+        interp_color = {"cheap": "#4ade80", "fair": "#e2c882", "expensive": "#f87171", "unknown": "#888"}
         if fcf_yield is not None or ev_ebitda is not None:
             st_obj.markdown(
                 f'<div class="trade-box"><div class="trade-row">'
@@ -452,7 +433,7 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
         az_score = altman_data.get("z_score")
         az_zone = altman_data.get("zone", "unknown")
         if az_score is not None:
-            zone_color = {"safe": "#00c853", "grey": "#ff9100", "distress": "#ff1744"}.get(az_zone, "#888")
+            zone_color = {"safe": "#4ade80", "grey": "#e2c882", "distress": "#f87171"}.get(az_zone, "#888")
             bar_pct = min(100, max(0, (az_score / 5.0) * 100))
             st_obj.markdown(
                 f'<div style="margin:8px 0">'
@@ -477,7 +458,7 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
         for i, (lbl, key) in enumerate(mo_fields):
             val = momentum_data.get(key)
             if val is not None:
-                c = "#00c853" if val >= 0 else "#ff1744"
+                c = "#4ade80" if val >= 0 else "#f87171"
                 s = "+" if val >= 0 else ""
                 mo_cols[i].markdown(
                     f'<div style="text-align:center;padding:8px;background:rgba(255,255,255,0.03);border-radius:8px">'
@@ -486,16 +467,15 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
                     f'</div>', unsafe_allow_html=True
                 )
 
-    with st_obj.expander("🔬 Analyst, Insider & Market Intelligence"):
+    with tab_analyst:
         # ── Analyst targets ──
         st_obj.caption("Analyst coverage")
-        from modules.analyst import score_analyst
         targets = analyst_data.get("price_targets", {})
         consensus = analyst_data.get("consensus", "N/A")
         count = analyst_data.get("analyst_count", 0)
         if targets.get("mean"):
             upside = targets.get("upside_pct", 0) or 0
-            u_color = "#00c853" if upside >= 0 else "#ff1744"
+            u_color = "#4ade80" if upside >= 0 else "#f87171"
             u_sign = "+" if upside >= 0 else ""
             st_obj.markdown(f"""
 <div class="trade-box" style="margin-bottom:12px">
@@ -507,9 +487,9 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
     <div class="trade-item"><div class="trade-label">Upside</div>
       <div class="trade-value" style="color:{u_color}">{u_sign}{upside:.1f}%</div></div>
     <div class="trade-item"><div class="trade-label">High Target</div>
-      <div class="trade-value" style="color:#00c853">${targets.get('high','N/A')}</div></div>
+      <div class="trade-value" style="color:#4ade80">${targets.get('high','N/A')}</div></div>
     <div class="trade-item"><div class="trade-label">Low Target</div>
-      <div class="trade-value" style="color:#ff1744">${targets.get('low','N/A')}</div></div>
+      <div class="trade-value" style="color:#f87171">${targets.get('low','N/A')}</div></div>
   </div>
 </div>""", unsafe_allow_html=True)
         else:
@@ -536,7 +516,7 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
         st_obj.markdown(f"{icon_map[ins_status]} {ins_text}")
         if insider_txns:
             for txn in insider_txns[:5]:
-                action_color = "#00c853" if txn["action"] == "BUY" else "#ff1744" if txn["action"] == "SELL" else "#888"
+                action_color = "#4ade80" if txn["action"] == "BUY" else "#f87171" if txn["action"] == "SELL" else "#888"
                 shares_str = f"{txn['shares']:,} shares" if txn["shares"] else ""
                 st_obj.markdown(
                     f'<span style="color:{action_color};font-weight:600">{txn["action"]}</span> '
@@ -567,7 +547,7 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
         shares_short = short_data.get("shares_short")
         squeeze = short_data.get("squeeze_potential", "unknown")
         if pct_float is not None:
-            squeeze_color = "#ff1744" if squeeze == "high" else "#ff9100" if squeeze == "moderate" else "#00c853"
+            squeeze_color = "#f87171" if squeeze == "high" else "#e2c882" if squeeze == "moderate" else "#4ade80"
             st_obj.markdown(
                 f'<div class="trade-box"><div class="trade-row">'
                 f'<div class="trade-item"><div class="trade-label">Short % of Float</div><div class="trade-value">{pct_float:.1f}%</div></div>'
@@ -591,7 +571,7 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
                 b_icon = "✅" if beat is True else "❌" if beat is False else "➖"
                 surp = q.get("surprise_pct")
                 surp_str = (f"+{surp:.1f}%" if surp and surp >= 0 else f"{surp:.1f}%") if surp is not None else "N/A"
-                surp_color = "#00c853" if surp and surp > 0 else "#ff1744" if surp and surp < 0 else "#888"
+                surp_color = "#4ade80" if surp and surp > 0 else "#f87171" if surp and surp < 0 else "#888"
                 eq_cols[i].markdown(
                     f'<div style="text-align:center;padding:8px;background:rgba(255,255,255,0.03);border-radius:8px">'
                     f'<div style="font-size:0.7rem;opacity:0.45">{q["date"]}</div>'
@@ -611,8 +591,8 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
         vix_val = market_ctx.get("vix")
         vix_regime = market_ctx.get("vix_regime", "unknown")
         w52_pct = market_ctx.get("week52_pct")
-        vix_regime_color = {"high_fear": "#ff1744", "neutral": "#ff9100", "complacency": "#00c853"}.get(vix_regime, "#888")
-        rank_color = "#00c853" if w52_pct and w52_pct > 60 else "#ff1744" if w52_pct and w52_pct < 20 else "#ff9100"
+        vix_regime_color = {"high_fear": "#f87171", "neutral": "#e2c882", "complacency": "#4ade80"}.get(vix_regime, "#888")
+        rank_color = "#4ade80" if w52_pct and w52_pct > 60 else "#f87171" if w52_pct and w52_pct < 20 else "#e2c882"
         if vix_val is not None or w52_pct is not None:
             st_obj.markdown(
                 f'<div class="trade-box"><div class="trade-row">'
@@ -638,38 +618,10 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
         sm_etf = sector_mom.get("etf")
         sm_ret = sector_mom.get("etf_1mo_return")
         if sm_etf and sm_ret is not None:
-            ret_color = "#00c853" if sm_ret >= 0 else "#ff1744"
             ret_sign = "+" if sm_ret >= 0 else ""
             st_obj.caption(f"{sm_etf} 1-month return: {ret_sign}{sm_ret:.1f}%")
 
-    with st_obj.expander("📈 Performance vs S&P 500"):
-        from modules.relative_performance import score_relative_performance
-        r_sig, r_status, r_text = score_relative_performance(rel_perf, ticker)
-        st_obj.markdown(f"{icon_map[r_status]} {r_text}")
-
-        if rel_series.get("dates"):
-            fig_rel = go.Figure()
-            fig_rel.add_trace(go.Scatter(
-                x=rel_series["dates"], y=rel_series["ticker_series"],
-                name=ticker, line=dict(color="#4fc3f7", width=2)
-            ))
-            fig_rel.add_trace(go.Scatter(
-                x=rel_series["dates"], y=rel_series["spy_series"],
-                name="S&P 500", line=dict(color="rgba(255,255,255,0.3)", width=1, dash="dot")
-            ))
-            fig_rel.add_hline(y=100, line_dash="dash", line_color="rgba(255,255,255,0.1)")
-            fig_rel.update_layout(
-                height=280, margin=dict(t=10, b=10),
-                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(family="Space Grotesk"),
-                legend=dict(orientation="h", y=1.02),
-                yaxis_title="Base 100",
-            )
-            st_obj.plotly_chart(fig_rel, width="stretch")
-        else:
-            st_obj.info("Could not load comparison data.")
-
-    with st_obj.expander("📰 News & sentiment"):
+    with tab_news:
         if not scored_articles:
             st_obj.info("No recent news found.")
         else:
@@ -687,7 +639,7 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
                     if a.get("url"):
                         st_obj.markdown(f"[Read article]({a['url']})")
 
-    with st_obj.expander("🔁 Backtest — how did a simple strategy do?"):
+    with tab_backtest:
         st_obj.caption("Buys when 20-day average crosses above 50-day average. Sells when it crosses below.")
         if not run_backtest:
             st_obj.info("Enable 'Run SMA Crossover' in the sidebar to run.")
@@ -696,7 +648,6 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
                 try:
                     pf = sma_crossover_backtest(df["close"], fast=int(fast_win), slow=int(slow_win))
                     stats = get_backtest_stats(pf)
-                    total_return = float(stats.get("Total Return [%]", 0) or 0)
                     n_trades = int(stats.get("Total Trades", 0) or 0)
                     if n_trades == 0:
                         st_obj.warning(
@@ -709,3 +660,87 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
                         st_obj.plotly_chart(pf.plot(), width="stretch")
                 except Exception as e:
                     st_obj.error(f"Backtest failed: {e}")
+
+    with tab_more:
+        # Exit strategy
+        with st_obj.expander("🚪 Exit Strategy & Conditions"):
+            st_obj.markdown(f"**TP rationale:** {smart_trade['take_profit_reason']}" if smart_trade['take_profit_reason'] else "")
+            for cond in smart_trade["exit_conditions"]:
+                icon = "🛑" if "stop" in cond.lower() or "drops below" in cond.lower() else "💰" if "profit" in cond.lower() or "tp" in cond.lower() else "⚠️"
+                safe_cond = cond.replace("$", "\\$")
+                st_obj.markdown(f"{icon} {safe_cond}")
+
+        # AI Thesis
+        with st_obj.expander(f"🧠 AI Thesis — {thesis.get('headline', ticker)}"):
+            one_liner = thesis.get("one_liner", "")
+            if one_liner:
+                st_obj.markdown(f"*{one_liner}*")
+                st_obj.divider()
+            col_bull, col_bear = st_obj.columns(2)
+            with col_bull:
+                st_obj.caption("Bull case")
+                for pt in thesis.get("bull_points", []):
+                    st_obj.markdown(pt)
+            with col_bear:
+                st_obj.caption("Bear case")
+                for pt in thesis.get("bear_points", []):
+                    st_obj.markdown(pt)
+            if thesis.get("key_catalyst") or thesis.get("key_risk"):
+                st_obj.divider()
+                kc1, kc2 = st_obj.columns(2)
+                if thesis.get("key_catalyst"):
+                    kc1.markdown(f"**🚀 Key catalyst:** {thesis['key_catalyst']}")
+                if thesis.get("key_risk"):
+                    kc2.markdown(f"**⚠️ Key risk:** {thesis['key_risk']}")
+
+        # Suggested Alerts
+        if alert_suggestions:
+            with st_obj.expander(f"🔔 Suggested Alerts for {ticker} ({len(alert_suggestions)} suggestions)"):
+                st_obj.caption("Based on support/resistance levels and analyst targets. Click to add.")
+                existing_alert_prices = {a["target_price"] for a in alerts_load() if a["ticker"] == ticker}
+                for sug in alert_suggestions:
+                    priority_color = "#4ade80" if sug["priority"] == "high" else "#e2c882" if sug["priority"] == "medium" else "#888"
+                    direction_arrow = "▲" if sug["direction"] == "above" else "▼"
+                    already_set = sug["target_price"] in existing_alert_prices
+                    c1, c2 = st_obj.columns([4, 1])
+                    c1.markdown(
+                        f'<span style="color:{priority_color};font-size:0.8rem;font-weight:600">{sug["priority"].upper()}</span> '
+                        f'<span style="font-family:\'JetBrains Mono\',monospace">{direction_arrow} ${sug["target_price"]}</span> '
+                        f'— {sug["reason"]}',
+                        unsafe_allow_html=True
+                    )
+                    if already_set:
+                        c2.caption("✓ Set")
+                    elif c2.button("Add", key=f"sug_{sug['target_price']}_{sug['direction']}"):
+                        alerts_add(ticker, sug["target_price"], sug["direction"],
+                                   note=f"Auto: {sug['reason'][:50]}")
+                        st_obj.session_state.alerts = alerts_load()
+                        st_obj.rerun()
+
+        # Performance vs S&P 500
+        with st_obj.expander("📈 Performance vs S&P 500"):
+            from modules.relative_performance import score_relative_performance
+            r_sig, r_status, r_text = score_relative_performance(rel_perf, ticker)
+            st_obj.markdown(f"{icon_map[r_status]} {r_text}")
+
+            if rel_series.get("dates"):
+                fig_rel = go.Figure()
+                fig_rel.add_trace(go.Scatter(
+                    x=rel_series["dates"], y=rel_series["ticker_series"],
+                    name=ticker, line=dict(color="#e2c882", width=2)
+                ))
+                fig_rel.add_trace(go.Scatter(
+                    x=rel_series["dates"], y=rel_series["spy_series"],
+                    name="S&P 500", line=dict(color="rgba(255,255,255,0.3)", width=1, dash="dot")
+                ))
+                fig_rel.add_hline(y=100, line_dash="dash", line_color="rgba(255,255,255,0.1)")
+                fig_rel.update_layout(
+                    height=280, margin=dict(t=10, b=10),
+                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                    font=dict(family="Space Grotesk"),
+                    legend=dict(orientation="h", y=1.02),
+                    yaxis_title="Base 100",
+                )
+                st_obj.plotly_chart(fig_rel, width="stretch")
+            else:
+                st_obj.info("Could not load comparison data.")

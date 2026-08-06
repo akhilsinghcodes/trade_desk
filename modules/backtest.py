@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import vectorbt as vbt
 import yfinance as yf
-from typing import Callable, List, Dict, Any, Tuple
+from typing import Callable, List, Dict, Any
 
 warnings.filterwarnings("ignore", category=UserWarning, module="vectorbt")
 

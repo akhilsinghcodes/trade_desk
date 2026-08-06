@@ -1,5 +1,4 @@
 """ELI5 (Explain Like I'm 5) page."""
-import streamlit as st
 import sys
 import os
 

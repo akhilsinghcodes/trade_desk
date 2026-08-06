@@ -1,5 +1,4 @@
 """Watchlist page."""
-import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 import sys
 import os
@@ -61,8 +60,7 @@ def render_watchlist_page(st_obj):
                 chg = (close - prev_close) / prev_close * 100
                 chg_color = "#00c853" if chg > 0 else "#ff1744"
                 chg_str = f"+{chg:.2f}%" if chg > 0 else f"{chg:.2f}%"
-                mc = f"${_info.get('marketCap',0)/1e9:.1f}B" if _info.get("marketCap") else "N/A"
-                pe = f"{_info.get('trailingPE'):.1f}" if _info.get("trailingPE") else "N/A"
+                pe =f"{_info.get('trailingPE'):.1f}" if _info.get("trailingPE") else "N/A"
                 v = _score["verdict"]
                 conf = int(_score["confidence"] * 100)
                 v_hex = color_map.get(_score["color"], "#888")

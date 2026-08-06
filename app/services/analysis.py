@@ -10,7 +10,6 @@ from modules.support_resistance import swing_levels, pivot_points, suggest_trade
 from modules.earnings import get_next_earnings
 from modules.score import combined_score
 from modules.volume import add_volume_indicators, volume_signal
-from modules.news import overall_sentiment
 from modules.thesis import generate_thesis
 from modules.trade_strategy import get_smart_trade_strategy as _smart_strat
 from modules.alert_suggestions import suggest_alerts

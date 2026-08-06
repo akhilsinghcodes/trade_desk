@@ -1,9 +1,7 @@
 """Multi-ticker screener page."""
-import streamlit as st
 import sys
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Optional
 import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))

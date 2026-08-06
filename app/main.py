@@ -51,7 +51,7 @@ html, body, [class*="css"] { font-family: 'Space Grotesk', sans-serif; }
 
 .score-bar-row { display: flex; gap: 20px; margin: 20px 0; }
 .score-bar-item { flex: 1; }
-.score-bar-label { font-size: 0.75rem; opacity: 0.55; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+.score-bar-label { font-size: 0.75rem; opacity: 0.55; margin-bottom: 4px; letter-spacing: 0.01em; }
 .score-bar-track {
     height: 6px; background: rgba(255,255,255,0.08);
     border-radius: 3px; overflow: hidden; margin-bottom: 4px;
@@ -77,18 +77,18 @@ html, body, [class*="css"] { font-family: 'Space Grotesk', sans-serif; }
 .trade-item { flex: 1; padding: 8px 16px; border-right: 1px solid rgba(255,255,255,0.06); }
 .trade-item:first-child { padding-left: 0; }
 .trade-item:last-child { border-right: none; }
-.trade-label { font-size: 0.7rem; opacity: 0.45; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+.trade-label { font-size: 0.7rem; opacity: 0.55; letter-spacing: 0.01em; margin-bottom: 4px; }
 .trade-value { font-family: 'JetBrains Mono', monospace; font-size: 1.1rem; font-weight: 600; }
 .trade-sub { font-size: 0.75rem; opacity: 0.5; margin-top: 2px; }
 
 .meta-chip {
     display: inline-block;
     background: rgba(255,255,255,0.06);
-    border-radius: 20px;
+    border-radius: 4px;
     padding: 3px 10px;
     font-size: 0.75rem;
     margin-right: 6px;
-    font-family: 'JetBrains Mono', monospace;
+    border: 0.5px solid rgba(255,255,255,0.1);
 }
 
 /* tighten Streamlit expander */
@@ -169,6 +169,7 @@ with st.sidebar:
     st.divider()
 
     if page == "📊 Analyze":
+        st.sidebar.markdown("### 🔍 Ticker")
         default_ticker = st.session_state.pop("analyze_ticker", "AAPL")
         ticker = _norm_ticker(st.text_input("Ticker", value=default_ticker))
         if st.button("⭐ Add to Watchlist"):
@@ -181,13 +182,15 @@ with st.sidebar:
         if st.button("🗑 Clear Cache", help="Force re-fetch all data for this ticker"):
             cache_invalidate_ticker(ticker)
             st.rerun()
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("### 📅 Period")
         period = st.selectbox("Period", ["3mo", "6mo", "1y", "2y", "5y"], index=2)
-        st.divider()
-        st.caption("Chart options")
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("### ⚙️ Chart Options")
         show_bb = st.checkbox("Bollinger Bands", value=True)
         show_sma = st.checkbox("SMA 20/50", value=True)
-        st.divider()
-        st.caption("Backtest")
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("### 🔁 Backtest")
         run_backtest = st.checkbox("Run SMA Crossover", value=True)
         fast_win = st.number_input("Fast SMA", value=20, min_value=2)
         slow_win = st.number_input("Slow SMA", value=50, min_value=3)
