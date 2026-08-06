@@ -1,6 +1,5 @@
 """Fetch news via yfinance + run FinBERT sentiment locally."""
 import yfinance as yf
-from datetime import datetime
 
 
 def _is_relevant(article: dict, ticker: str, company: str = "") -> bool:
@@ -17,7 +16,6 @@ def _is_relevant(article: dict, ticker: str, company: str = "") -> bool:
 def get_news(ticker: str, limit: int = 10, company: str = "") -> list[dict]:
     t = yf.Ticker(ticker)
     raw = t.news or []
-    articles = []
     all_articles = []
     for item in raw:
         content = item.get("content", {})

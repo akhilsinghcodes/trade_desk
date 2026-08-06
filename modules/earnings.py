@@ -1,5 +1,5 @@
 import yfinance as yf
-from datetime import datetime, timedelta
+from datetime import datetime
 
 
 def get_next_earnings(ticker: str) -> dict:
@@ -107,7 +107,7 @@ def get_next_earnings(ticker: str) -> dict:
             "text": text
         }
 
-    except Exception as e:
+    except Exception:
         # Handle all exceptions gracefully
         return {
             "date": None,

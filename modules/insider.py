@@ -1,6 +1,5 @@
 """Insider transactions from yfinance."""
 import yfinance as yf
-import pandas as pd
 
 
 def get_insider_transactions(ticker: str) -> dict:
@@ -33,7 +32,6 @@ def get_insider_transactions(ticker: str) -> dict:
             try:
                 text = str(row.get("text", row.get("transaction", ""))).lower()
                 shares = row.get("shares", 0) or 0
-                value = row.get("value", row.get("startdate", 0))
                 insider = row.get("insider", row.get("filer_name", "Unknown"))
                 position = row.get("position", row.get("filer_relation", ""))
 

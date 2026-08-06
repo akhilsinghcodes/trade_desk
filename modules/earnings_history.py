@@ -1,6 +1,5 @@
 """Historical earnings surprise data from yfinance."""
 import yfinance as yf
-import pandas as pd
 
 
 def get_earnings_history(ticker: str) -> dict:
@@ -76,7 +75,6 @@ def get_earnings_history(ticker: str) -> dict:
 
 def score_earnings_history(data: dict) -> tuple[str, str, str]:
     """Returns (label, status, text) for signals list."""
-    quarters = data.get("quarters", [])
     beats = data.get("beat_count", 0)
     misses = data.get("miss_count", 0)
     avg_surp = data.get("avg_surprise_pct")

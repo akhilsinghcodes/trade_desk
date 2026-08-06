@@ -1,6 +1,5 @@
 import yfinance as yf
 from statistics import median
-from typing import Optional
 
 # Sector → list of representative peer tickers
 SECTOR_PEERS = {

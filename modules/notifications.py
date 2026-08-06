@@ -1,6 +1,5 @@
 """Desktop push notifications for price alerts — works when browser tab is closed."""
 import threading
-import time
 import os
 
 

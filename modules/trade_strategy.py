@@ -51,15 +51,12 @@ def get_smart_trade_strategy(
     else:
         conviction = "low"
 
-    tech_score  = breakdown.get("technical", 0)
     fund_score  = breakdown.get("fundamental", 0)
-    sent_score  = breakdown.get("sentiment", 0)
 
     # ── Risk adjustments ────────────────────────────────────────────────────────
     near_earnings = earnings_days_away is not None and 0 < earnings_days_away <= 14
     financial_distress = altman_zone == "distress"
     strong_momentum = momentum_trend in ("strong_up", "up")
-    weak_momentum   = momentum_trend in ("down", "strong_down")
     sector_headwind = sector_trend == "downtrend"
     high_short      = short_pct is not None and short_pct >= 20
 
@@ -69,7 +66,6 @@ def get_smart_trade_strategy(
     # HOLD → small discount (stock is fairly valued; enter near current)
     # SELL → no entry suggested (handled below)
     is_buy  = "BUY" in verdict.upper() and "AVOID" not in verdict.upper()
-    is_hold = "HOLD" in verdict.upper() or "WATCH" in verdict.upper()
 
     if is_buy:
         if conviction == "high" and strong_momentum:
@@ -234,7 +230,7 @@ def get_smart_trade_strategy(
 
     # Sector rotation
     if sector_headwind:
-        exits.append(f"Sector still in downtrend — size smaller, exit faster on any weakness")
+        exits.append("Sector still in downtrend — size smaller, exit faster on any weakness")
 
     # Time-based
     exits.append("Re-evaluate thesis in 4–8 weeks if price hasn't moved toward TP1")

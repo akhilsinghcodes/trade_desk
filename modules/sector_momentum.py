@@ -109,7 +109,7 @@ def get_sector_momentum(sector: str) -> dict:
             "etf_1mo_return": float(one_mo_return) if one_mo_return is not None else None,
         })
 
-    except Exception as e:
+    except Exception:
         # Return partial result with unknown trend on any error
         result["trend"] = "unknown"
 
@@ -134,8 +134,6 @@ def score_sector_momentum(data: dict) -> tuple[str, str, str]:
     sector = data.get("sector", "Unknown")
     etf = data.get("etf")
     trend = data.get("trend", "unknown")
-    sma20 = data.get("etf_sma20")
-    sma50 = data.get("etf_sma50")
 
     if trend == "unknown" or etf is None:
         status = "neutral"

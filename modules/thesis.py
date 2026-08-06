@@ -5,7 +5,6 @@ Pure Python logic — no external API calls, no ML model needed.
 Converts quantitative signals into human-readable investment narrative.
 """
 
-from typing import Dict, List, Tuple, Optional
 
 
 def generate_thesis(

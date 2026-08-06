@@ -18,7 +18,7 @@ Zones:
 """
 
 import yfinance as yf
-from typing import Optional, Dict, Tuple
+from typing import Tuple
 
 
 def _get(series, *keys):

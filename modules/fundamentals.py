@@ -19,9 +19,6 @@ def get_fundamentals(ticker: str) -> dict:
         return info.get(key, default)
 
     revenue = safe("totalRevenue")
-    net_income = safe("netIncomeToCommon")
-    total_debt = safe("totalDebt")
-    total_equity = safe("totalStockholderEquity")
     current_assets = safe("totalCurrentAssets")
     current_liabilities = safe("totalCurrentLiabilities")
 

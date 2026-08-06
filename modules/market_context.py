@@ -3,7 +3,6 @@ Market context module for fetching VIX and computing 52-week rank metrics.
 """
 
 import yfinance as yf
-from typing import Optional
 
 
 def get_market_context(ticker: str) -> dict:

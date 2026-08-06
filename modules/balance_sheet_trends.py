@@ -1,6 +1,5 @@
 """Balance sheet YoY trends from yfinance — debt direction and financial health."""
 import yfinance as yf
-import pandas as pd
 
 
 def get_balance_sheet_trends(ticker: str) -> dict:

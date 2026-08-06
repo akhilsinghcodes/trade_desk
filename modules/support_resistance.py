@@ -1,21 +1,20 @@
 """Support & resistance levels + suggested entry/stop-loss."""
 import pandas as pd
-import numpy as np
 
 
 def pivot_points(df: pd.DataFrame) -> dict:
     """Classic pivot points from last completed session."""
     last = df.iloc[-2] if len(df) > 1 else df.iloc[-1]
-    h, l, c = last["high"], last["low"], last["close"]
-    pp = (h + l + c) / 3
+    h, lo, c = last["high"], last["low"], last["close"]
+    pp = (h + lo + c) / 3
     return {
         "PP": round(pp, 2),
-        "R1": round(2 * pp - l, 2),
-        "R2": round(pp + (h - l), 2),
-        "R3": round(h + 2 * (pp - l), 2),
+        "R1": round(2 * pp - lo, 2),
+        "R2": round(pp + ( h - lo), 2),
+        "R3": round(h + 2 * (pp - lo), 2),
         "S1": round(2 * pp - h, 2),
-        "S2": round(pp - (h - l), 2),
-        "S3": round(l - 2 * (h - pp), 2),
+        "S2": round(pp - ( h - lo), 2),
+        "S3": round(lo - 2 * (h - pp), 2),
     }
 
 

@@ -35,11 +35,11 @@ from modules.sector_momentum import score_sector_momentum
 from modules.dilution_risk import score_dilution, score_earnings_proximity, get_earnings_proximity
 from modules.altman_z import score_altman_z
 from modules.momentum import score_momentum
-from modules.thesis import generate_thesis, format_thesis_markdown
-from modules.eli5 import GLOSSARY, CATEGORIES, get_term, get_by_category, search_terms as eli5_search
+from modules.thesis import generate_thesis
+from modules.trade_strategy import get_smart_trade_strategy as _smart_strat
+from modules.eli5 import CATEGORIES, get_by_category, search_terms as eli5_search
 from modules.db import (
-    wl_load, wl_add, wl_remove, wl_save,
-    port_load, port_add, port_remove,
+    wl_load, wl_add, wl_remove, port_load, port_add, port_remove,
     alerts_load, alerts_add, alerts_remove, alerts_check,
     cache_invalidate_ticker, init_db,
 )
@@ -52,7 +52,7 @@ from modules.cached_fetch import (
     cached_sector_momentum, cached_dilution_risk,
     cached_altman_z, cached_momentum,
 )
-from modules.portfolio import calc_pnl, portfolio_summary
+from modules.portfolio import portfolio_summary
 
 st.set_page_config(page_title="Trade Lab", layout="wide", initial_sidebar_state="expanded")
 
@@ -147,7 +147,7 @@ div[data-testid="stExpander"] { border: 1px solid rgba(255,255,255,0.07) !import
 # ── CONSTANTS ──────────────────────────────────────────────────────────────────
 color_map = {"green": "#00c853", "red": "#ff1744", "orange": "#ff9100"}
 
-_TICKER_ALIASES = {"BRKB": "BRK-B", "BRKA": "BRK-A", "BRKB": "BRK-B"}
+_TICKER_ALIASES = {"BRKB": "BRK-B", "BRKA": "BRK-A"}
 def _norm_ticker(t: str) -> str:
     t = t.upper().strip()
     return _TICKER_ALIASES.get(t, t)
@@ -195,7 +195,6 @@ if "alerts" not in st.session_state:
 # Start background alert checker (desktop notifications every 5 min)
 if not alert_checker.is_running:
     def _get_prices():
-        import yfinance as yf
         tickers = list({a["ticker"] for a in alerts_load() if not a.get("triggered")})
         prices = {}
         for t in tickers:
@@ -751,7 +750,6 @@ swings = swing_levels(df)
 pivots = pivot_points(df)
 
 # Smart trade strategy using all signals
-from modules.trade_strategy import get_smart_trade_strategy as _smart_strat
 _supports_flat  = sorted([s for s in (swings.get("support", []) + [pivots.get("s1"), pivots.get("s2")]) if s], reverse=True)
 _resists_flat   = sorted([r for r in (swings.get("resistance", []) + [pivots.get("r1"), pivots.get("r2")]) if r])
 _atr_val = trade.get("atr") or 0

@@ -1,6 +1,6 @@
 import pandas as pd
 import yfinance as yf
-from typing import Tuple, Dict, Optional
+from typing import Tuple, Optional
 
 
 def _get_row(df: Optional[pd.DataFrame], key: str) -> Optional[pd.Series]:
@@ -299,7 +299,7 @@ def get_piotroski(ticker: str) -> dict:
             "interpretation": interpretation,
         }
 
-    except Exception as e:
+    except Exception:
         # Return zero score on error
         return {
             "score": 0,

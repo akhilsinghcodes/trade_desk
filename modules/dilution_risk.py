@@ -7,7 +7,6 @@ Two signals:
 """
 
 import yfinance as yf
-from typing import Optional
 
 
 def get_dilution_risk(ticker: str) -> dict:

@@ -17,7 +17,6 @@ TTL_REL_PERF = 900     # 15 min
 
 def _df_to_records(df):
     """Serialize DataFrame for JSON storage."""
-    import pandas as pd
     if df is None or df.empty:
         return None
     return {"index": [str(i) for i in df.index], "data": df.to_dict(orient="list")}

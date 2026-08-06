@@ -23,7 +23,6 @@ def get_ownership(ticker: str) -> dict:
         if major is not None and not major.empty:
             # Newer yfinance: DataFrame with 'Breakdown' index and 'Value' column
             if "Value" in major.columns:
-                idx = major.index if hasattr(major.index, '__iter__') else []
                 row_dict = {}
                 for col in major.index:
                     try:

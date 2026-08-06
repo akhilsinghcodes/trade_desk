@@ -1,6 +1,5 @@
 """Analyst recommendations and price targets from yfinance."""
 import yfinance as yf
-import pandas as pd
 
 
 def get_analyst_data(ticker: str) -> dict:
