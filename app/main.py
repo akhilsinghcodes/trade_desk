@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from modules.db import wl_load, wl_add, cache_invalidate_ticker, init_db, alerts_load, port_load, alerts_check
 from modules.fetch import get_ohlcv
 from modules.notifications import alert_checker
-from app.views import watchlist, portfolio, alerts, eli5, analyze, screener
+from app.views import watchlist, portfolio, alerts, eli5, analyze, screener, backtest
 
 # ── PAGE CONFIG ─────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Trade Lab", layout="wide", initial_sidebar_state="expanded")
@@ -161,7 +161,7 @@ if not alert_checker.is_running:
 
 # ── SIDEBAR ────────────────────────────────────────────────────────────────────
 with st.sidebar:
-    pages = ["📊 Analyze", "⭐ Watchlist", "🔍 Screener", "💼 Portfolio", "🔔 Alerts", "📚 ELI5"]
+    pages = ["📊 Analyze", "⭐ Watchlist", "🔍 Screener", "💼 Portfolio", "🔔 Alerts", "📚 ELI5", "🧪 Backtest"]
     default_page_idx = 0
     page = st.radio("Page", pages, label_visibility="collapsed", index=default_page_idx)
     if "page_override" in st.session_state:
@@ -195,6 +195,14 @@ with st.sidebar:
         fast_win = st.number_input("Fast SMA", value=20, min_value=2)
         slow_win = st.number_input("Slow SMA", value=50, min_value=3)
 
+    elif page == "🧪 Backtest":
+        st.sidebar.markdown("### 🔍 Ticker")
+        bt_ticker = _norm_ticker(st.text_input("Ticker", value="AAPL", key="bt_ticker"))
+        st.sidebar.markdown("### 📅 Period")
+        bt_period = st.selectbox("Period", ["1y", "2y", "3y", "5y"], index=1, key="bt_period")
+        ticker = bt_ticker
+        period = bt_period
+
 # ── PAGE ROUTING ───────────────────────────────────────────────────────────────
 if page == "⭐ Watchlist":
     watchlist.render_watchlist_page(st)
@@ -208,3 +216,5 @@ elif page == "📚 ELI5":
     eli5.render_eli5_page(st)
 elif page == "📊 Analyze":
     analyze.render_analyze_page(st, ticker, period, show_bb, show_sma, run_backtest, fast_win, slow_win)
+elif page == "🧪 Backtest":
+    backtest.render_backtest_page(st, ticker, period)

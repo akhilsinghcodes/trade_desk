@@ -61,6 +61,7 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
     swings = analysis["swings"]
     smart_trade = analysis["smart_trade"]
     thesis = analysis["thesis"]
+    llm_rationale = analysis.get("llm_rationale", {}) or {}
     alert_suggestions = analysis["alert_suggestions"]
     close_price = analysis["close_price"]
     price_change = analysis["price_change"]
@@ -190,16 +191,26 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
     _entry_disc = smart_trade["discount_pct"]
     _pos_size = smart_trade.get("position_size_pct", 100)
     _pos_size_color = "#e2c882" if _pos_size >= 75 else "#4ade80" if _pos_size >= 50 else "#f87171"
+    _setup = smart_trade.get("setup_type", "RANGE")
+    _setup_colors = {
+        "BREAKOUT": ("#4ade80", "rgba(74,222,128,0.12)"),
+        "PULLBACK": ("#e2c882", "rgba(226,200,130,0.12)"),
+        "MEAN_REVERSION": ("#818cf8", "rgba(129,140,248,0.12)"),
+        "BREAKDOWN": ("#f87171", "rgba(248,113,113,0.12)"),
+        "RANGE": ("#94a3b8", "rgba(148,163,184,0.10)"),
+    }
+    _sc, _sbg = _setup_colors.get(_setup, ("#94a3b8", "rgba(148,163,184,0.10)"))
     st_obj.markdown(f"""
 <div class="trade-box">
-  <div style="margin-bottom:14px">
+  <div style="margin-bottom:14px;display:flex;align-items:center;justify-content:space-between">
     <div style="font-size:0.75rem;opacity:0.45;letter-spacing:0.06em">Smart trade strategy</div>
+    <span style="font-size:0.7rem;font-weight:600;letter-spacing:0.08em;color:{_sc};background:{_sbg};border:1px solid {_sc}33;border-radius:4px;padding:2px 8px">{_setup}</span>
   </div>
   <div class="trade-row">
     <div class="trade-item">
       <div class="trade-label" style="opacity:0.7">Limit Entry</div>
       <div class="trade-value" style="color:#e2c882;font-size:1.4rem;font-weight:700">${smart_trade['limit_entry']:.2f}</div>
-      <div class="trade-sub">−{_entry_disc:.1f}% from now</div>
+      <div class="trade-sub">{'↑ buy the break' if _setup == 'BREAKOUT' else f'−{abs(_entry_disc):.1f}% from now'}</div>
     </div>
     <div class="trade-item">
       <div class="trade-label" style="opacity:0.7">Stop Loss</div>
@@ -235,6 +246,21 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
   <div style="font-size:0.75rem;opacity:0.45;margin-top:10px">
     Entry rationale: {smart_trade['limit_entry_reason']}
   </div>
+</div>
+""", unsafe_allow_html=True)
+
+    # LLM rationale block (shown if LiteLLM returned data)
+    _entry_r = llm_rationale.get("entry_rationale")
+    _risk_r  = llm_rationale.get("risk_rationale")
+    _time_r  = llm_rationale.get("timing_note")
+    if _entry_r or _risk_r or _time_r:
+        st_obj.markdown(f"""
+<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);
+            border-radius:10px;padding:16px 20px;margin:-8px 0 16px 0">
+  <div style="font-size:0.7rem;opacity:0.4;letter-spacing:0.08em;margin-bottom:10px">🤖 AI TRADE COMMENTARY</div>
+  {'<div style="font-size:0.85rem;margin-bottom:8px"><span style="opacity:0.5">Entry:</span> ' + _entry_r + '</div>' if _entry_r else ''}
+  {'<div style="font-size:0.85rem;margin-bottom:8px"><span style="opacity:0.5;color:#f87171">Risk:</span> ' + _risk_r + '</div>' if _risk_r else ''}
+  {'<div style="font-size:0.85rem"><span style="opacity:0.5">Timing:</span> ' + _time_r + '</div>' if _time_r else ''}
 </div>
 """, unsafe_allow_html=True)
 

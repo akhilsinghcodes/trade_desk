@@ -12,6 +12,7 @@ from modules.score import combined_score
 from modules.volume import add_volume_indicators, volume_signal
 from modules.thesis import generate_thesis
 from modules.trade_strategy import get_smart_trade_strategy as _smart_strat
+from modules.llm_strategy import generate_trade_rationale
 from modules.alert_suggestions import suggest_alerts
 from modules.fundamentals import score_fundamentals
 from modules.analyst import score_analyst
@@ -31,6 +32,7 @@ from modules.altman_z import score_altman_z
 from modules.momentum import score_momentum
 from modules.vol_ratio import score_vol_ratio
 from modules.momentum_signals import compute_coppock, compute_ridge_slope
+from modules.setup_detector import analyze_setup
 from modules.cached_fetch import (
     cached_ohlcv, cached_info, cached_fundamentals,
     cached_analyst, cached_insider, cached_ownership, cached_options,
@@ -95,6 +97,7 @@ def run_analysis(ticker: str, period: str, interval: str = "1d") -> dict:
     tech_summary = summarize(df)
     coppock_data = compute_coppock(df)
     ridge_slope_data = compute_ridge_slope(df)
+    setup_data = analyze_setup(df)
     vol_sig = volume_signal(df)
     tech_summary["signals"].append(vol_sig)
     tech_summary["signals"].append(score_analyst(analyst_data))
@@ -164,6 +167,7 @@ def run_analysis(ticker: str, period: str, interval: str = "1d") -> dict:
         earnings_days_away=earnings_info.get("days_away"),
         sector_trend=sector_mom.get("trend", "unknown"),
         vix=market_ctx.get("vix"),
+        setup_data=setup_data,
     )
 
     # Investment thesis
@@ -184,6 +188,27 @@ def run_analysis(ticker: str, period: str, interval: str = "1d") -> dict:
         momentum_data=momentum_data,
         altman_data=altman_data,
         company_name=info.get("shortName", ticker),
+    )
+
+    # LLM trade rationale (non-blocking — returns None fields on failure)
+    llm_rationale = generate_trade_rationale(
+        ticker=ticker,
+        verdict=verdict_result["verdict"],
+        confidence_pct=int(verdict_result["confidence"] * 100),
+        limit_entry=smart_trade["limit_entry"],
+        stop_loss=smart_trade["stop_loss"],
+        tp1=smart_trade["take_profit_1"],
+        tp2=smart_trade["take_profit_2"],
+        risk_reward=smart_trade["risk_reward"],
+        conviction=smart_trade["conviction"],
+        breakdown=verdict_result.get("breakdown", {}),
+        thesis_oneliner=thesis.get("one_liner", ""),
+        momentum_trend=momentum_data.get("trend", "neutral") if momentum_data else "neutral",
+        sector_trend=sector_mom.get("trend", "unknown"),
+        piotroski=piotroski_data.get("score", 0) if piotroski_data else 0,
+        altman_zone=altman_data.get("zone", "unknown") if altman_data else "unknown",
+        earnings_days=earnings_info.get("days_away"),
+        analyst_upside=analyst_data.get("price_targets", {}).get("upside_pct") if analyst_data else None,
     )
 
     # Auto-suggest alerts
@@ -228,6 +253,7 @@ def run_analysis(ticker: str, period: str, interval: str = "1d") -> dict:
         "pmo_rs_data": pmo_rs_data,
         "coppock_data": coppock_data,
         "ridge_slope_data": ridge_slope_data,
+        "setup_data": setup_data,
         "scored_articles": scored_articles,
         "tech_summary": tech_summary,
         "verdict_result": verdict_result,
@@ -235,6 +261,7 @@ def run_analysis(ticker: str, period: str, interval: str = "1d") -> dict:
         "pivots": pivots,
         "smart_trade": smart_trade,
         "thesis": thesis,
+        "llm_rationale": llm_rationale,
         "alert_suggestions": alert_suggestions,
         "close_price": close_price,
         "prev_close": prev_close,
