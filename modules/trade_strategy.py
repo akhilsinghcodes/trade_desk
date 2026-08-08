@@ -1,7 +1,7 @@
 """
 Smart trade strategy: limit entry, take profit, stop loss, exit conditions.
 Uses all available signals — technical, fundamental, momentum, analyst targets,
-support/resistance levels, earnings proximity, and combined conviction score.
+support/resistance levels, earnings proximity, setup detector, and conviction score.
 """
 from typing import Optional
 
@@ -28,6 +28,7 @@ def get_smart_trade_strategy(
     earnings_days_away: Optional[int],
     sector_trend: str,              # "uptrend" | "downtrend" | "unknown"
     vix: Optional[float] = None,    # VIX level for position sizing
+    setup_data: Optional[dict] = None,  # from modules.setup_detector.analyze_setup
 ) -> dict:
     """
     Returns dict with:
@@ -62,143 +63,165 @@ def get_smart_trade_strategy(
     sector_headwind = sector_trend == "downtrend"
     high_short      = short_pct is not None and short_pct >= 20
 
-    # ── LIMIT ENTRY ─────────────────────────────────────────────────────────────
-    # Discount is verdict-first, then conviction-adjusted.
-    # BUY  → meaningful discount (waiting for dip makes sense)
-    # HOLD → small discount (stock is fairly valued; enter near current)
-    # SELL → no entry suggested (handled below)
-    is_buy  = "BUY" in verdict.upper() and "AVOID" not in verdict.upper()
+    # ── SETUP-AWARE ENTRY/EXIT ────────────────────────────────────────────────────
+    # When setup_detector provides structural levels, use them as primary anchors.
+    # Fall back to percentage-based heuristics only when no structural data exists.
 
-    if is_buy:
-        if conviction == "high" and strong_momentum:
-            base_discount_pct = 0.008   # 0.8% — strong trend, don't miss entry
-        elif conviction == "high":
-            base_discount_pct = 0.015   # 1.5%
-        elif conviction == "medium":
-            base_discount_pct = 0.020   # 2.0%
-        else:
-            base_discount_pct = 0.025   # 2.5% — low conviction BUY needs cushion
-    else:
-        # HOLD/WATCH — enter near current or on small dip; no big discount hunting
-        if conviction == "high":
-            base_discount_pct = 0.005   # 0.5%
-        elif conviction == "medium":
-            base_discount_pct = 0.010   # 1.0%
-        else:
-            base_discount_pct = 0.015   # 1.5% — low conviction HOLD, be patient
-
-    # Risk adjustments (additive, but cap total at 4% for HOLD, 6% for BUY)
-    adj = 0.0
-    if near_earnings:
-        adj += 0.010
-    if sector_headwind:
-        adj += 0.005
-    if financial_distress:
-        adj += 0.010
-    if week52_rank is not None and week52_rank > 0.90:
-        adj += 0.010  # near 52W high — extra patience
-    if high_short:
-        adj += 0.005
-
-    max_discount = 0.06 if is_buy else 0.04
-    base_discount_pct = min(base_discount_pct + adj, max_discount)
-
-    naive_limit = current_price * (1 - base_discount_pct)
-
-    # Snap to nearest support below naive_limit (within 5% slack)
+    is_buy = "BUY" in verdict.upper() and "AVOID" not in verdict.upper()
     supports_below = [s for s in support_levels if s < current_price]
-    limit_entry = naive_limit
+
+    setup_type  = (setup_data or {}).get("setup_type", "RANGE")
+    ee          = (setup_data or {}).get("entry_exit", {}) or {}
+    struct_entry = ee.get("entry")
+    struct_sl    = ee.get("stop_loss")
+    struct_tp1   = ee.get("tp1")
+    struct_tp2   = ee.get("tp2")
+    ee_entry_basis = ee.get("entry_basis", "")
+    ee_sl_basis    = ee.get("sl_basis", "")
+    ee_tp_basis    = ee.get("tp_basis", "")
+
+    # ── LIMIT ENTRY ──────────────────────────────────────────────────────────────
     limit_reason_parts = []
 
-    # Only snap to support if it's within 1.5× the base discount distance from current price
-    # Prevents snapping to far-away supports that require unrealistic pullbacks
-    max_snap_distance = current_price * (base_discount_pct * 1.5)
-    snap_floor = current_price - max_snap_distance
+    # BREAKOUT entries are above current price (buy the break); all others must be at/below
+    _entry_valid = (
+        struct_entry is not None
+        and abs(struct_entry - current_price) / current_price < 0.08
+        and (setup_type == "BREAKOUT" or struct_entry <= current_price * 1.001)
+    )
 
-    snapped = False
-    for sup in sorted(supports_below, reverse=True):  # closest first
-        if sup < snap_floor:
-            break  # too far below — don't snap here
-        if abs(sup - naive_limit) / current_price < 0.015:  # support within 1.5% of naive → snap to it
-            limit_entry = sup * 0.997
-            limit_reason_parts.append(f"near support ${sup:.2f}")
-            snapped = True
-            break
+    if _entry_valid:
+        # Structural level exists and is within 8% — use it
+        limit_entry = struct_entry
+        limit_reason_parts.append(f"{setup_type} setup: {ee_entry_basis}")
+        base_discount_pct = (current_price - limit_entry) / current_price
+    else:
+        # Fallback: percentage-based with support snap
+        if is_buy:
+            if conviction == "high" and strong_momentum:
+                base_discount_pct = 0.003
+            elif conviction == "high":
+                base_discount_pct = 0.007
+            elif conviction == "medium":
+                base_discount_pct = 0.010
+            else:
+                base_discount_pct = 0.015
+        else:
+            if conviction == "high":
+                base_discount_pct = 0.010
+            elif conviction == "medium":
+                base_discount_pct = 0.018
+            else:
+                base_discount_pct = 0.025
 
-    if not snapped:
-        limit_reason_parts.append(f"{base_discount_pct*100:.1f}% discount from current")
+        adj = 0.0
+        if near_earnings:
+            adj += 0.005
+        if sector_headwind:
+            adj += 0.003
+        if financial_distress:
+            adj += 0.005
+        if high_short:
+            adj += 0.003
+        if not is_buy and week52_rank is not None and week52_rank > 0.90:
+            adj += 0.008
+
+        max_discount = 0.03 if is_buy else 0.05
+        base_discount_pct = min(base_discount_pct + adj, max_discount)
+        naive_limit = current_price * (1 - base_discount_pct)
+
+        max_snap_distance = current_price * (base_discount_pct * 1.5)
+        snap_floor = current_price - max_snap_distance
+        limit_entry = naive_limit
+
+        snapped = False
+        for sup in sorted(supports_below, reverse=True):
+            if sup < snap_floor:
+                break
+            if abs(sup - naive_limit) / current_price < 0.015:
+                limit_entry = sup * 0.997
+                limit_reason_parts.append(f"near support ${sup:.2f}")
+                snapped = True
+                break
+
+        if not snapped:
+            limit_reason_parts.append(f"{base_discount_pct*100:.1f}% discount from current")
 
     limit_reason_parts.append(f"{conviction} conviction")
     if near_earnings:
         limit_reason_parts.append("earnings buffer added")
     if week52_rank is not None and week52_rank > 0.85:
-        limit_reason_parts.append("near 52W high — extra patience")
-
+        limit_reason_parts.append("near 52W high")
     limit_entry_reason = "; ".join(limit_reason_parts)
 
     # ── STOP LOSS ───────────────────────────────────────────────────────────────
-    # Default: 1.5× ATR below entry
-    atr_stop = limit_entry - (1.5 * atr)
+    if struct_sl and struct_sl < limit_entry and struct_sl > limit_entry * 0.90:
+        # Structural swing-low stop — preferred
+        stop_loss = struct_sl
+        stop_reason = f"{setup_type}: {ee_sl_basis}"
+    else:
+        atr_stop = limit_entry - (1.5 * atr)
+        stop_snapped = False
+        stop_loss = atr_stop
+        stop_reason = f"1.5× ATR (${atr:.2f}) below entry"
 
-    # Try to snap to support below limit_entry
-    stop_snapped = False
-    stop_loss = atr_stop
-    stop_reason = f"1.5× ATR (${atr:.2f}) below entry"
+        for sup in sorted(supports_below, reverse=True):
+            if sup < limit_entry * 0.995:
+                candidate = sup * 0.995
+                if candidate > atr_stop:
+                    stop_loss = candidate
+                    stop_reason = f"just below support level ${sup:.2f}"
+                    stop_snapped = True
+                    break
 
-    for sup in sorted(supports_below, reverse=True):
-        if sup < limit_entry * 0.995:  # below entry
-            candidate = sup * 0.995    # just below support
-            if candidate > atr_stop:   # tighter than ATR stop → use support-based
-                stop_loss = candidate
-                stop_reason = f"just below support level ${sup:.2f}"
-                stop_snapped = True
-                break
+        if not stop_snapped and atr_stop < limit_entry * 0.92:
+            stop_loss = limit_entry * 0.95
+            stop_reason = "5% hard floor (ATR too wide)"
 
-    if not stop_snapped and atr_stop < limit_entry * 0.92:
-        # ATR stop is >8% away — use 5% hard floor instead
-        stop_loss = limit_entry * 0.95
-        stop_reason = "5% hard floor (ATR too wide)"
-
-    # Tighten stop near earnings — don't hold through binary event at risk
     if near_earnings and stop_loss < limit_entry * 0.97:
         stop_loss = limit_entry * 0.97
         stop_reason = f"tightened to 3% before earnings in {earnings_days_away}d"
 
     # ── TAKE PROFIT ─────────────────────────────────────────────────────────────
-    # Conservative TP1: nearest resistance above entry
+    risk_dist = limit_entry - stop_loss
+    min_tp1 = limit_entry + max(risk_dist * 1.0, atr)
+    min_tp2 = limit_entry + max(risk_dist * 1.5, atr * 2.0)
+
     resistances_above = [r for r in resistance_levels if r > limit_entry]
-    tp1_from_resistance = min(resistances_above) if resistances_above else limit_entry + (2 * atr)
 
-    # Analyst target as ceiling check
-    tp1_from_analyst = None
-    if analyst_target and analyst_target > current_price:
-        tp1_from_analyst = analyst_target * 0.95  # 5% haircut on analyst target
-
-    # TP1: min of resistance and 95% of analyst target (take the more conservative)
-    if tp1_from_analyst:
-        tp1 = min(tp1_from_resistance, tp1_from_analyst)
-        tp1 = max(tp1, limit_entry + atr)  # at least 1 ATR above entry
+    # Use structural TP when it clears R:R floor
+    if struct_tp1 and struct_tp1 >= min_tp1:
+        tp1 = struct_tp1
+        tp_source = f"{setup_type}: {ee_tp_basis}"
     else:
-        tp1 = tp1_from_resistance
+        tp1_candidates = [r for r in resistances_above if r >= min_tp1]
+        tp1_from_resistance = min(tp1_candidates) if tp1_candidates else min_tp1
 
-    # TP2: next resistance level, or analyst target, or 3× ATR
-    tp2_candidates = [r for r in resistances_above if r > tp1 * 1.01]
-    if tp2_candidates:
-        tp2 = min(tp2_candidates)
-    elif analyst_target and analyst_target > tp1:
-        tp2 = analyst_target
+        tp1_from_analyst = None
+        if analyst_target and analyst_target > current_price:
+            tp1_from_analyst = analyst_target * 0.95
+
+        if tp1_from_analyst and tp1_from_analyst >= min_tp1:
+            tp1 = min(tp1_from_resistance, tp1_from_analyst)
+        else:
+            tp1 = tp1_from_resistance
+        tp_source = f"resistance ${tp1:.2f}" if resistances_above else "ATR floor"
+
+    if struct_tp2 and struct_tp2 > tp1 * 1.01 and struct_tp2 >= min_tp2:
+        tp2 = struct_tp2
     else:
-        tp2 = limit_entry + (3 * atr)
+        tp2_candidates = [r for r in resistances_above if r > tp1 * 1.01 and r >= min_tp2]
+        if tp2_candidates:
+            tp2 = min(tp2_candidates)
+        elif analyst_target and analyst_target >= min_tp2:
+            tp2 = analyst_target
+        else:
+            tp2 = max(min_tp2, limit_entry + (3 * atr))
 
-    # Build TP reason
-    tp_parts = []
-    if resistances_above and tp1 == tp1_from_resistance:
-        tp_parts.append(f"TP1 at resistance ${tp1_from_resistance:.2f}")
-    elif tp1_from_analyst:
-        tp_parts.append(f"TP1 at 95% of analyst target ${analyst_target:.2f}")
-    if analyst_target:
+    tp_parts = [tp_source]
+    if analyst_target and analyst_upside_pct is not None:
         tp_parts.append(f"analyst consensus ${analyst_target:.2f} ({analyst_upside_pct:+.1f}%)")
-    take_profit_reason = "; ".join(tp_parts) if tp_parts else "ATR-based targets"
+    take_profit_reason = "; ".join(tp_parts)
 
     # ── RISK/REWARD ─────────────────────────────────────────────────────────────
     risk = limit_entry - stop_loss
@@ -278,4 +301,5 @@ def get_smart_trade_strategy(
         "conviction": conviction,
         "discount_pct": round(base_discount_pct * 100, 1),
         "position_size_pct": int(position_size_pct),
+        "setup_type": setup_type,
     }
