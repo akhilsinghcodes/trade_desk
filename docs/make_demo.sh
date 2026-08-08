@@ -10,17 +10,12 @@ OUT_GIF="$(dirname "$0")/demo.gif"
 BASE_URL="http://localhost:8501"
 W=1400
 H=860
-DELAY=0   # gifski handles timing via --fps
 
 mkdir -p "$FRAMES_DIR"
 rm -f "$FRAMES_DIR"/*.png
 
 echo "▶ Checking server..."
 curl -sf "$BASE_URL" > /dev/null || { echo "ERROR: Streamlit not running on $BASE_URL"; exit 1; }
-
-# Helper: capture browser window via screencapture (finds Chrome/Safari with localhost:8501)
-# We use Python + Playwright for headless browser screenshots (more reliable than screencapture)
-# Install once: pip install playwright && playwright install chromium
 
 PYTHON=".venv/bin/python"
 $PYTHON - << 'PYEOF'
@@ -49,10 +44,24 @@ async def shot(page, name, count=1):
         await page.screenshot(path=str(FRAMES / f"{pad(frame)}_{name}.png"))
         frame += 1
 
-async def click_radio(page, label):
-    """Click sidebar nav radio by visible label text."""
-    await page.get_by_label(label).click()
-    await page.wait_for_timeout(2000)
+async def click_tab(page, label):
+    tab = page.get_by_role("tab", name=label, exact=False).first
+    if await tab.count() > 0:
+        await tab.click()
+        await page.wait_for_timeout(1500)
+
+async def nav_to(page, label):
+    await page.evaluate("window.scrollTo(0, 0)")
+    await page.locator("[data-testid='stRadio'] label").filter(has_text=label).first.click(force=True)
+    await page.wait_for_timeout(3000)
+
+async def set_ticker(page, ticker, wait_ms=8000):
+    await page.evaluate("window.scrollTo(0, 0)")
+    ticker_box = page.get_by_label("Ticker")
+    await ticker_box.click(click_count=3)
+    await ticker_box.type(ticker)
+    await ticker_box.press("Enter")
+    await page.wait_for_timeout(wait_ms)
 
 async def main():
     global frame
@@ -77,111 +86,122 @@ async def main():
             await page.wait_for_timeout(2000)
 
         # ── Analyze: NVDA ─────────────────────────────────────────────────────
-        print("→ Analyze — NVDA")
-        ticker_box = page.get_by_label("Ticker")
-        await ticker_box.click(click_count=3)
-        await ticker_box.type("NVDA")
-        await ticker_box.press("Enter")
-        await page.wait_for_timeout(8000)   # wait for full data load
-        await shot(page, "analyze_verdict", 3)
+        # Headline: BUY/HOLD/SELL built ONLY from the price signals that have
+        # real measured predictive power (IC), weighted by that power, with
+        # the resulting rule itself backtested and split-half stability
+        # checked — not a hand-picked verdict.
+        print("→ Analyze — NVDA — validated verdict")
+        await set_ticker(page, "NVDA")
+        await shot(page, "validated_verdict", 3)
 
-        # scroll to trade strategy + thesis (always visible)
-        await page.evaluate("window.scrollTo(0, 500)")
-        await page.wait_for_timeout(600)
-        await shot(page, "trade_strategy", 2)
+        # Detected setup + real backtest (win rate / Sharpe / stability gate)
+        await page.evaluate("window.scrollTo(0, 420)")
+        await shot(page, "setup_backtest", 3)
 
-        # helper: click a tab by its label text
-        async def click_tab(label):
-            tab = page.get_by_role("tab", name=label, exact=False).first
-            if await tab.count() > 0:
-                await tab.click()
-                await page.wait_for_timeout(1500)
+        # Exploratory correlation check — expand it to show the direction
+        # column (normal vs contrarian) that explains the verdict's math
+        print("→ Correlation check (expanded)")
+        corr_expander = page.get_by_text("Exploratory correlation check", exact=False).first
+        if await corr_expander.count() > 0:
+            await corr_expander.click()
+            await page.wait_for_timeout(800)
+            await page.evaluate("window.scrollTo(0, 900)")
+            await shot(page, "correlation_check", 3)
 
-        # Chart tab (default, scroll to chart)
+        # LLM signal summary — plain-English explainer only, no fake decisions
+        await page.evaluate("window.scrollTo(0, 1250)")
+        await shot(page, "llm_summary", 2)
+
+        # ── Chart / drill-down tabs ──────────────────────────────────────────
         await page.evaluate("window.scrollTo(0, 0)")
-        await click_tab("Chart")
+        await click_tab(page, "Chart")
         await page.evaluate("window.scrollTo(0, 700)")
         await shot(page, "price_chart", 3)
 
-        # Fundamentals tab
         await page.evaluate("window.scrollTo(0, 0)")
-        await click_tab("Fundamentals")
+        await click_tab(page, "Fundamentals")
         await page.evaluate("window.scrollTo(0, 700)")
         await shot(page, "fundamentals", 2)
         await page.evaluate("window.scrollTo(0, 1400)")
         await shot(page, "piotroski_altman", 2)
 
-        # Analyst & Insider tab
         await page.evaluate("window.scrollTo(0, 0)")
-        await click_tab("Analyst")
+        await click_tab(page, "Analyst")
         await page.evaluate("window.scrollTo(0, 600)")
-        await shot(page, "analyst", 2)
+        await shot(page, "analyst_insider", 2)
 
-        # News tab
         await page.evaluate("window.scrollTo(0, 0)")
-        await click_tab("News")
+        await click_tab(page, "News")
         await page.evaluate("window.scrollTo(0, 600)")
         await shot(page, "news_sentiment", 2)
 
-        # Backtest tab
+        # Backtest tab (inside Analyze) — signal IC table + strategy backtest
         await page.evaluate("window.scrollTo(0, 0)")
-        await click_tab("Backtest")
+        await click_tab(page, "Backtest")
         await page.wait_for_timeout(2000)
         await page.evaluate("window.scrollTo(0, 600)")
-        await shot(page, "backtest", 2)
+        await shot(page, "analyze_backtest_tab", 2)
 
-        # ── Analyze: JPM (different sector) ───────────────────────────────────
-        print("→ Analyze — JPM")
+        # More tab — exit strategy, AI thesis, momentum signals, etc.
         await page.evaluate("window.scrollTo(0, 0)")
-        ticker_box = page.get_by_label("Ticker")
-        await ticker_box.click(click_count=3)
-        await ticker_box.type("JPM")
-        await ticker_box.press("Enter")
-        await page.wait_for_timeout(7000)
-        await shot(page, "jpm_verdict", 2)
+        await click_tab(page, "More")
+        await page.wait_for_timeout(1000)
+        await page.evaluate("window.scrollTo(0, 400)")
+        await shot(page, "more_tab", 2)
 
-        # helper: navigate sidebar by label text
-        # Streamlit radio inputs have overlay divs — use JS to set value + dispatch event
-        pages_list = ["📊 Analyze", "⭐ Watchlist", "🔍 Screener", "💼 Portfolio", "🔔 Alerts", "📚 ELI5"]
-        async def nav_to(label):
-            await page.evaluate("window.scrollTo(0, 0)")
-            # Click the div that contains the label text (the styled radio label)
-            await page.locator(f"[data-testid='stRadio'] label").filter(has_text=label).first.click(force=True)
-            await page.wait_for_timeout(3000)
+        # ── Analyze: a SELL case (different sector, shows the verdict engine
+        # calling it the other way, not just always bullish) ────────────────
+        print("→ Analyze — ADBE — SELL case")
+        await set_ticker(page, "ADBE", wait_ms=7000)
+        await shot(page, "adbe_sell_verdict", 2)
 
-        # ── Watchlist ──────────────────────────────────────────────────────────
+        # ── Sidebar nav pages ────────────────────────────────────────────────
         print("→ Watchlist")
-        await nav_to("⭐ Watchlist")
+        await nav_to(page, "⭐ Watchlist")
         await shot(page, "watchlist", 3)
 
-        # ── Screener ───────────────────────────────────────────────────────────
         print("→ Screener")
-        await nav_to("🔍 Screener")
-        await page.wait_for_timeout(6000)  # parallel fetch takes time
+        await nav_to(page, "🔍 Screener")
+        await page.wait_for_timeout(6000)
         await shot(page, "screener", 3)
 
-        # ── Portfolio ──────────────────────────────────────────────────────────
         print("→ Portfolio")
-        await nav_to("💼 Portfolio")
+        await nav_to(page, "💼 Portfolio")
         await page.wait_for_timeout(3000)
         await shot(page, "portfolio_summary", 2)
         await page.evaluate("window.scrollTo(0, 600)")
         await shot(page, "portfolio_positions", 2)
         await page.evaluate("window.scrollTo(0, 9999)")
         await page.wait_for_timeout(2000)
-        await shot(page, "correlation_matrix", 3)
+        await shot(page, "correlation_matrix", 2)
 
-        # ── Alerts ────────────────────────────────────────────────────────────
         print("→ Alerts")
-        await nav_to("🔔 Alerts")
+        await nav_to(page, "🔔 Alerts")
         await shot(page, "alerts", 2)
 
-        # ── ELI5 ─────────────────────────────────────────────────────────────
         print("→ ELI5")
-        await nav_to("📚 ELI5")
+        await nav_to(page, "📚 ELI5")
         await shot(page, "eli5", 2)
         await page.evaluate("window.scrollTo(0, 600)")
         await shot(page, "eli5_terms", 2)
+
+        # Standalone Backtest page — signal IC factor analysis + full
+        # strategy comparison (BREAKOUT/PULLBACK/MEAN_REVERSION/RANGE/BREAKDOWN)
+        print("→ Backtest (standalone)")
+        await nav_to(page, "🧪 Backtest")
+        await page.wait_for_timeout(3000)
+        await shot(page, "backtest_signal_ic", 2)
+        strategy_tab = page.get_by_role("tab", name="Strategy Backtest", exact=False).first
+        if await strategy_tab.count() > 0:
+            await strategy_tab.click()
+            await page.wait_for_timeout(8000)  # vectorbt run takes a few seconds
+            await shot(page, "backtest_strategy_comparison", 3)
+
+        # LLM Usage — real logged cost/token telemetry, not a guess
+        print("→ LLM Usage")
+        await nav_to(page, "💰 LLM Usage")
+        await page.wait_for_timeout(1500)
+        await shot(page, "llm_usage", 2)
 
         await browser.close()
         print(f"✓ {frame} frames saved to docs/demo_frames/")

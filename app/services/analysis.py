@@ -43,7 +43,7 @@ from modules.cached_fetch import (
 )
 
 
-def run_analysis(ticker: str, period: str, interval: str = "1d") -> dict:
+def run_analysis(ticker: str, period: str, interval: str = "1d", llm_backend: str = "local") -> dict:
     """
     Fetch all data and compute signals for a ticker.
 
@@ -190,25 +190,12 @@ def run_analysis(ticker: str, period: str, interval: str = "1d") -> dict:
         company_name=info.get("shortName", ticker),
     )
 
-    # LLM trade rationale (non-blocking — returns None fields on failure)
+    # LLM signal summary — plain-English explainer only, no trade decisions
     llm_rationale = generate_trade_rationale(
         ticker=ticker,
-        verdict=verdict_result["verdict"],
-        confidence_pct=int(verdict_result["confidence"] * 100),
-        limit_entry=smart_trade["limit_entry"],
-        stop_loss=smart_trade["stop_loss"],
-        tp1=smart_trade["take_profit_1"],
-        tp2=smart_trade["take_profit_2"],
-        risk_reward=smart_trade["risk_reward"],
-        conviction=smart_trade["conviction"],
-        breakdown=verdict_result.get("breakdown", {}),
-        thesis_oneliner=thesis.get("one_liner", ""),
-        momentum_trend=momentum_data.get("trend", "neutral") if momentum_data else "neutral",
-        sector_trend=sector_mom.get("trend", "unknown"),
-        piotroski=piotroski_data.get("score", 0) if piotroski_data else 0,
-        altman_zone=altman_data.get("zone", "unknown") if altman_data else "unknown",
+        signals=tech_summary["signals"],
         earnings_days=earnings_info.get("days_away"),
-        analyst_upside=analyst_data.get("price_targets", {}).get("upside_pct") if analyst_data else None,
+        backend=llm_backend,
     )
 
     # Auto-suggest alerts

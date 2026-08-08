@@ -8,8 +8,10 @@ import vectorbt as vbt
 warnings.filterwarnings("ignore", category=UserWarning, module="vectorbt")
 warnings.filterwarnings("ignore", category=FutureWarning)
 
-_STRATEGIES = ("BREAKOUT", "PULLBACK", "MEAN_REVERSION", "BUY_AND_HOLD")
+_STRATEGIES = ("BREAKOUT", "PULLBACK", "MEAN_REVERSION", "RANGE", "BREAKDOWN", "VALIDATED", "BUY_AND_HOLD")
 _MIN_BARS = 100
+# Strategies that trade the short side — direction is set accordingly in backtest_strategy.
+_SHORT_STRATEGIES = ("BREAKDOWN",)
 
 
 def _build_signals(df: pd.DataFrame, strategy: str) -> tuple[pd.Series, pd.Series]:
@@ -43,6 +45,31 @@ def _build_signals(df: pd.DataFrame, strategy: str) -> tuple[pd.Series, pd.Serie
     elif strategy == "MEAN_REVERSION":
         entries = (rsi < 32) & (close < bb_lower)
         exits = (rsi > 55) | (close > bb_mid)
+
+    elif strategy == "RANGE":
+        # Mirrors detect_setup's RANGE fallback: no strong trend (SMA20/50 close
+        # together), not RSI-extreme. Trades the range itself — buy near the
+        # lower band, sell near the upper band, stop out if it actually breaks.
+        flat_trend = ((sma20 - sma50).abs() / close) < 0.03
+        entries = (close <= bb_lower * 1.01) & flat_trend & rsi.between(30, 55)
+        exits = (close >= bb_mid) | (close < bb_lower * 0.97)
+
+    elif strategy == "BREAKDOWN":
+        # Mirrors BREAKOUT but short: price breaks below a recent swing low
+        # with bearish structure. Short-only — covers on an oversold bounce
+        # rather than riding it to zero.
+        prev_10_low = close.shift(1).rolling(10).min()
+        entries = (close < prev_10_low) & (sma20 < sma50) & (rsi < 45)
+        exits = (rsi < 25) | (close > sma20)
+
+    elif strategy == "VALIDATED":
+        # The composite of ONLY the ~10 price signals that show real
+        # predictive power, weighted by their own measured IC — not a
+        # hand-picked verdict. See modules/factor_analysis.compute_composite_signal.
+        from modules.factor_analysis import compute_composite_signal
+        composite, _, _ = compute_composite_signal(df)
+        entries = composite > 0.15
+        exits = composite < -0.05
 
     elif strategy == "BUY_AND_HOLD":
         entries = pd.Series([True] + [False] * (len(close) - 1), index=close.index)
@@ -118,6 +145,7 @@ def backtest_strategy(
 
         close = df["close"]
         entries, exits = _build_signals(df, strategy)
+        direction = "shortonly" if strategy in _SHORT_STRATEGIES else "longonly"
 
         pf = vbt.Portfolio.from_signals(
             close,
@@ -126,6 +154,7 @@ def backtest_strategy(
             init_cash=init_cash,
             freq="D",
             fees=commission,
+            direction=direction,
         )
 
         equity = pf.value()
@@ -177,6 +206,40 @@ def backtest_strategy(
         base["error"] = str(exc)
 
     return base
+
+
+def backtest_stability(
+    df: pd.DataFrame,
+    strategy: str,
+    init_cash: float = 10_000,
+    commission: float = 0.001,
+) -> dict:
+    """Split the period in half and backtest each half independently.
+
+    A single blended backtest over the whole period can look like an edge
+    purely from one lucky stretch. Requiring the edge to show up in BOTH
+    halves independently is a cheap, honest proxy for out-of-sample
+    validation — it won't catch everything walk-forward testing would, but
+    it catches the common case of a strategy that only worked in one regime.
+    """
+    mid = len(df) // 2
+    first_half = backtest_strategy(df.iloc[:mid], strategy, init_cash, commission)
+    second_half = backtest_strategy(df.iloc[mid:], strategy, init_cash, commission)
+
+    both_have_trades = first_half["n_trades"] >= 3 and second_half["n_trades"] >= 3
+    both_profitable = first_half["sharpe"] > 0 and second_half["sharpe"] > 0
+    stable = both_have_trades and both_profitable
+
+    return {
+        "first_half": first_half,
+        "second_half": second_half,
+        "stable": stable,
+        "reason": (
+            "not enough trades in one half to check" if not both_have_trades
+            else "edge did not hold in both halves" if not both_profitable
+            else "edge held in both halves independently"
+        ),
+    }
 
 
 def backtest_all(

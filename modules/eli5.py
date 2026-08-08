@@ -422,8 +422,8 @@ GLOSSARY = {
     "Confidence Score": {
         "full_name": "Confidence Score (%)",
         "category": "Verdict",
-        "eli5": "How sure is the analysis about the verdict? 95% = very sure, 60% = somewhat unsure. Higher confidence is better, but not a guarantee.",
-        "what_it_means": "Confidence (0-100%) reflects signal alignment. High confidence (>80%) means technicals, fundamentals, and sentiment agree. Low confidence (<60%) means mixed signals.",
+        "eli5": "NOT a probability the verdict is right. It only measures how much the individual signals agree with each other — 95% = signals mostly point the same way, 24% = signals are fighting each other (some bullish, some bearish).",
+        "what_it_means": "Computed as 1 - stddev of every individual signal's bull/bear/neutral score. Real stocks with mixed evidence will structurally score low here even when the verdict itself is reasonable — it's a signal-agreement metric, not a calibrated accuracy score. For an actual track record, check the Backtest tab's win rate / Sharpe instead.",
         "good_sign": "Confidence above 80% (strong agreement across signals).",
         "bad_sign": "Confidence below 60% (conflicting signals); confidence declining.",
         "emoji": "📊",

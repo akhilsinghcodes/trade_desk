@@ -273,10 +273,23 @@ def suggest_entry_exit(
     swing_highs = structural_levels.get("swing_highs", [])
     swing_lows  = structural_levels.get("swing_lows", [])
 
+    # vol-adjusted position size (pysystemtrade method)
+    # assumes $10k account, 1% risk per trade
+    _account = 10_000
+    _risk_pct = 0.01
+    daily_vol_pct = atr / close if close > 0 else 0.02
+    annual_vol = daily_vol_pct * (252 ** 0.5)
+    if annual_vol > 0:
+        vol_adj_shares = int((_account * _risk_pct) / (close * annual_vol))
+    else:
+        vol_adj_shares = 0
+    # ponytail: hardcoded $10k/1% defaults, make configurable when multi-account
+
     def _fallback():
         return {
             "entry": None, "stop_loss": None, "tp1": None, "tp2": None,
             "entry_basis": "no structural levels", "sl_basis": "", "tp_basis": "",
+            "vol_adj_shares": vol_adj_shares,
         }
 
     if setup_type == "BREAKDOWN":
@@ -303,6 +316,7 @@ def suggest_entry_exit(
             "entry_basis": f"breakout above swing high ${last_swing_high:.2f}",
             "sl_basis":    f"swing low ${last_swing_low:.2f}" if last_swing_low else "2× ATR",
             "tp_basis":    "1.5× ATR above breakout; next swing high",
+            "vol_adj_shares": vol_adj_shares,
         }
 
     if setup_type == "PULLBACK":
@@ -331,6 +345,7 @@ def suggest_entry_exit(
             "entry_basis": f"pullback to structural support ${anchor:.2f}",
             "sl_basis":    f"below next swing low ${deeper[0]:.2f}" if deeper else "3% below support",
             "tp_basis":    f"prior swing highs ${tp1:.2f} / ${tp2:.2f}",
+            "vol_adj_shares": vol_adj_shares,
         }
 
     if setup_type == "MEAN_REVERSION":
@@ -359,6 +374,7 @@ def suggest_entry_exit(
             "entry_basis": entry_basis,
             "sl_basis":    "3% hard floor (mean-reversion entry)",
             "tp_basis":    f"mean-revert to SMA20 ${tp1:.2f}, extend to SMA50 ${tp2:.2f}",
+            "vol_adj_shares": vol_adj_shares,
         }
 
     # RANGE — use nearest support/resistance below current price
@@ -383,6 +399,7 @@ def suggest_entry_exit(
         "entry_basis": f"range support ${support:.2f}",
         "sl_basis":    "3% below range support",
         "tp_basis":    f"range resistance ${resist:.2f}" if resist else "2× ATR",
+        "vol_adj_shares": vol_adj_shares,
     }
 
 

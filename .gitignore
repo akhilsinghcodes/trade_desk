@@ -48,3 +48,6 @@ data/
 
 # Demo build artifacts (GIF is committed, raw frames are not)
 docs/demo_frames/
+
+# ML model weights (live in trade_ml project)
+models/
