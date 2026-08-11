@@ -199,14 +199,18 @@ def alerts_check(current_prices: dict[str, float]) -> list[dict]:
 # ── CACHE ─────────────────────────────────────────────────────────────────────
 
 def cache_get(key: str):
-    """Return cached value or None if missing/expired."""
+    """Return cached value or None if missing/expired.
+
+    Does NOT delete expired rows — a caller falling back to cache_get_stale()
+    on a failed live fetch needs the row to still be there. cache_set()
+    overwrites (INSERT OR REPLACE) on the next successful fetch anyway, so
+    there's nothing to clean up here."""
     init_db()
     with db() as conn:
         row = conn.execute("SELECT data, cached_at, ttl_seconds FROM api_cache WHERE cache_key = ?", (key,)).fetchone()
         if row is None:
             return None
         if time.time() - row["cached_at"] > row["ttl_seconds"]:
-            conn.execute("DELETE FROM api_cache WHERE cache_key = ?", (key,))
             return None
         return json.loads(row["data"])
 

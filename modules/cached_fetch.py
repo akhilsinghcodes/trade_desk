@@ -36,9 +36,10 @@ def cached_ohlcv(ticker: str, period: str):
         return df
     except Exception as e:
         logger.warning(f"Failed to fetch OHLCV for {ticker}: {e}")
-        if cached is not None:
+        stale = cache_get_stale(key)
+        if stale is not None:
             logger.warning(f"Returning stale OHLCV for {ticker}")
-            return _records_to_df(cached)
+            return _records_to_df(stale)
         return None
 
 
