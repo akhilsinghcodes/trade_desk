@@ -172,9 +172,9 @@ def _generate_bull_points(good_signals: list, analyst_data: dict, piotroski_data
             bull_points.append(f"✅ Momentum: Price momentum accelerating{yr_str}")
 
     # Low short interest
-    if short_data and short_data.get("short_pct_float", 0) < 3:
+    si = short_data.get("short_pct_float") if short_data else None
+    if si is not None and si < 3:
         if not any("short" in c for c in covered_labels):
-            si = short_data.get("short_pct_float", 0)
             bull_points.append(f"✅ Short Interest: Low {si:.1f}% reduces squeeze risk downside")
 
     # Return top 5
@@ -215,10 +215,10 @@ def _generate_bear_points(warning_signals: list, valuation_adv: dict, earnings_i
             bear_points.append(f"⚠️ Sector Headwind: {sector_mom.get('name', 'Sector')} momentum negative")
 
     # High short interest
-    if short_data and short_data.get("short_pct_float", 0) > 15:
+    si_bear = short_data.get("short_pct_float") if short_data else None
+    if si_bear is not None and si_bear > 15:
         if not any("short" in c for c in covered_labels):
-            si = short_data.get("short_pct_float", 0)
-            bear_points.append(f"⚠️ Short Interest: High {si:.1f}% indicates significant bearish positioning")
+            bear_points.append(f"⚠️ Short Interest: High {si_bear:.1f}% indicates significant bearish positioning")
 
     # Return top 5
     return bear_points[:5]

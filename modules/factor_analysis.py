@@ -97,6 +97,55 @@ def compute_rolling_ic(
     return rolling_ic
 
 
+def compute_composite_signal(
+    df: pd.DataFrame,
+    horizons: list = [1, 5, 10, 21],
+    min_abs_ic: float = 0.05,
+) -> tuple[pd.Series, list, pd.Series]:
+    """Build a composite signal from ONLY the price-based signals that show
+    real predictive power (|IC| >= min_abs_ic), weighted by their own measured
+    IC instead of hand-picked percentages. This is the only kind of signal in
+    this codebase that CAN be validated this way — it needs price history,
+    which fundamentals/insider/sentiment signals don't have point-in-time.
+
+    Returns (composite_series, signal_names_used, mean_ic_abs_per_signal).
+    composite_series is roughly bounded in [-1, 1]; NaN where insufficient
+    history exists (early bars).
+    """
+    signals_df = compute_signals_df(df)
+    ic_df = compute_ic(signals_df, df["close"], horizons=horizons)
+    summary = ic_summary(ic_df)
+    mean_ic_abs = summary["mean_ic_abs"]
+
+    ic_cols = [c for c in ic_df.columns if c[1] == "ic"]
+    mean_ic_signed = ic_df[ic_cols].astype(float).mean(axis=1)
+
+    # Normalize each signal to comparable units via its own expanding z-score —
+    # raw signals live on wildly different scales (RSI ~[-1,1] vs trend_strength
+    # ~[-0.05,0.05]) and can't be combined without this.
+    z = (signals_df - signals_df.expanding(min_periods=30).mean()) / signals_df.expanding(min_periods=30).std()
+    z = z.clip(-3, 3) / 3
+
+    composite = pd.Series(0.0, index=df.index)
+    total_weight = 0.0
+    used = []
+    for sig in signals_df.columns:
+        ic_abs = mean_ic_abs.get(sig, 0)
+        if pd.isna(ic_abs) or ic_abs < min_abs_ic:
+            continue
+        sign = 1 if mean_ic_signed.get(sig, 0) >= 0 else -1
+        composite = composite + sign * ic_abs * z[sig].fillna(0)
+        total_weight += ic_abs
+        used.append(sig)
+
+    if total_weight > 0:
+        composite = composite / total_weight
+    else:
+        composite = pd.Series(np.nan, index=df.index)
+
+    return composite, used, mean_ic_abs
+
+
 def ic_summary(ic_df: pd.DataFrame) -> pd.DataFrame:
     summary = ic_df.copy()
 

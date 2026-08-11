@@ -69,6 +69,17 @@ def init_db():
             cached_at REAL NOT NULL,
             ttl_seconds REAL NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS llm_calls (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticker TEXT NOT NULL,
+            backend TEXT NOT NULL,
+            source TEXT NOT NULL,
+            in_tokens INTEGER DEFAULT 0,
+            out_tokens INTEGER DEFAULT 0,
+            cost_usd REAL DEFAULT 0,
+            created_at REAL DEFAULT (unixepoch())
+        );
         """)
 
 
@@ -227,7 +238,56 @@ def cache_invalidate(key: str):
 
 
 def cache_invalidate_ticker(ticker: str):
-    """Remove all cache entries for a ticker."""
+    """Remove all cache entries for a ticker, wherever it sits in the key."""
+    init_db()
+    t = ticker.upper()
+    with db() as conn:
+        conn.execute(
+            "DELETE FROM api_cache WHERE cache_key LIKE ? OR cache_key LIKE ?",
+            (f"{t}:%", f"%:{t}:%")
+        )
+
+
+# ── LLM TELEMETRY ─────────────────────────────────────────────────────────────
+
+def log_llm_call(ticker: str, backend: str, source: str, cost_usd: float,
+                  in_tokens: int = 0, out_tokens: int = 0):
     init_db()
     with db() as conn:
-        conn.execute("DELETE FROM api_cache WHERE cache_key LIKE ?", (f"{ticker}:%",))
+        conn.execute(
+            "INSERT INTO llm_calls (ticker, backend, source, in_tokens, out_tokens, cost_usd) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (ticker.upper(), backend, source, in_tokens, out_tokens, cost_usd)
+        )
+
+
+def llm_calls_summary() -> dict:
+    """Aggregate totals plus per-source breakdown."""
+    init_db()
+    with db() as conn:
+        total = conn.execute(
+            "SELECT COUNT(*) n, COALESCE(SUM(cost_usd),0) cost, "
+            "COALESCE(SUM(in_tokens),0) in_tok, COALESCE(SUM(out_tokens),0) out_tok "
+            "FROM llm_calls"
+        ).fetchone()
+        by_source = conn.execute(
+            "SELECT source, COUNT(*) n, COALESCE(SUM(cost_usd),0) cost, "
+            "COALESCE(SUM(in_tokens),0) in_tok, COALESCE(SUM(out_tokens),0) out_tok "
+            "FROM llm_calls GROUP BY source ORDER BY cost DESC"
+        ).fetchall()
+        by_day = conn.execute(
+            "SELECT date(created_at, 'unixepoch') day, COALESCE(SUM(cost_usd),0) cost, COUNT(*) n "
+            "FROM llm_calls GROUP BY day ORDER BY day"
+        ).fetchall()
+        recent = conn.execute(
+            "SELECT * FROM llm_calls ORDER BY created_at DESC LIMIT 50"
+        ).fetchall()
+        return {
+            "total_calls": total["n"],
+            "total_cost": total["cost"],
+            "total_in_tokens": total["in_tok"],
+            "total_out_tokens": total["out_tok"],
+            "by_source": [dict(r) for r in by_source],
+            "by_day": [dict(r) for r in by_day],
+            "recent": [dict(r) for r in recent],
+        }

@@ -8,7 +8,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from modules.db import wl_load, wl_add, cache_invalidate_ticker, init_db, alerts_load, port_load, alerts_check
 from modules.fetch import get_ohlcv
 from modules.notifications import alert_checker
-from app.views import watchlist, portfolio, alerts, eli5, analyze, screener, backtest
+from modules.llm_batch import submit_portfolio_batch
+from app.views import watchlist, portfolio, alerts, eli5, analyze, screener, backtest, telemetry
 
 # ── PAGE CONFIG ─────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Trade Lab", layout="wide", initial_sidebar_state="expanded")
@@ -110,6 +111,34 @@ def _norm_ticker(t: str) -> str:
 # ── INIT DB + PERSISTENT STATE ─────────────────────────────────────────────────
 init_db()
 
+# ── PRE-COMPUTE LLM RATIONALE FOR PORTFOLIO (batch, fully background) ──────────
+# Runs once per server start in a daemon thread — never blocks page load.
+@st.cache_resource
+def _kick_portfolio_batch():
+    import threading
+    def _run():
+        try:
+            positions = port_load()
+            if not positions:
+                return
+            from modules.cached_fetch import cached_ohlcv
+            batch_data = []
+            for pos in positions:
+                t = pos["ticker"]
+                try:
+                    df = cached_ohlcv(t, "5d")
+                    close = float(df["close"].iloc[-1])
+                    pct_chg_5d = float((df["close"].iloc[-1] / df["close"].iloc[0] - 1) * 100) if len(df) >= 2 else 0.0
+                    batch_data.append({"ticker": t, "close": close, "pct_chg_5d": pct_chg_5d})
+                except Exception:
+                    pass
+            submit_portfolio_batch(batch_data)
+        except Exception as e:
+            print(f"[portfolio batch] error: {e}")
+    threading.Thread(target=_run, daemon=True).start()
+
+_kick_portfolio_batch()
+
 # ── DISCLAIMER BANNER (shown once per session) ─────────────────────────────────
 if "disclaimer_accepted" not in st.session_state:
     st.session_state.disclaimer_accepted = False
@@ -161,7 +190,7 @@ if not alert_checker.is_running:
 
 # ── SIDEBAR ────────────────────────────────────────────────────────────────────
 with st.sidebar:
-    pages = ["📊 Analyze", "⭐ Watchlist", "🔍 Screener", "💼 Portfolio", "🔔 Alerts", "📚 ELI5", "🧪 Backtest"]
+    pages = ["📊 Analyze", "⭐ Watchlist", "🔍 Screener", "💼 Portfolio", "🔔 Alerts", "📚 ELI5", "🧪 Backtest", "💰 LLM Usage"]
     default_page_idx = 0
     page = st.radio("Page", pages, label_visibility="collapsed", index=default_page_idx)
     if "page_override" in st.session_state:
@@ -184,7 +213,7 @@ with st.sidebar:
             st.rerun()
         st.sidebar.markdown("---")
         st.sidebar.markdown("### 📅 Period")
-        period = st.selectbox("Period", ["3mo", "6mo", "1y", "2y", "5y"], index=2)
+        period = st.selectbox("Period", ["3mo", "6mo", "1y", "2y", "5y"], index=3)
         st.sidebar.markdown("---")
         st.sidebar.markdown("### ⚙️ Chart Options")
         show_bb = st.checkbox("Bollinger Bands", value=True)
@@ -218,3 +247,5 @@ elif page == "📊 Analyze":
     analyze.render_analyze_page(st, ticker, period, show_bb, show_sma, run_backtest, fast_win, slow_win)
 elif page == "🧪 Backtest":
     backtest.render_backtest_page(st, ticker, period)
+elif page == "💰 LLM Usage":
+    telemetry.render_telemetry_page(st)

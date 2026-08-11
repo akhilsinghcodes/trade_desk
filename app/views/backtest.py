@@ -106,7 +106,7 @@ def render_backtest_page(st_obj, ticker: str, period: str = "2y"):
             ic_table.columns = [f"{h}d IC" for (h, _) in display_cols]
             ic_table["Mean |IC|"] = ic_table.abs().mean(axis=1)
             ic_table = ic_table.sort_values("Mean |IC|", ascending=False)
-            styled = ic_table.style.format("{:.3f}").applymap(_color_ic)
+            styled = ic_table.style.format("{:.3f}").map(_color_ic)
             st_obj.dataframe(styled, use_container_width=True)
 
         # t-stat table
@@ -155,7 +155,7 @@ def render_backtest_page(st_obj, ticker: str, period: str = "2y"):
         st_obj.markdown("### Setup strategies vs buy-and-hold")
         st_obj.markdown(
             "<div style='font-size:0.8rem;opacity:0.5;margin-bottom:16px'>"
-            "Backtest of BREAKOUT, PULLBACK, MEAN_REVERSION strategies using vectorbt. "
+            "Backtest of BREAKOUT, PULLBACK, MEAN_REVERSION, RANGE, BREAKDOWN strategies using vectorbt. "
             "0.1% commission per trade. No slippage modeled."
             "</div>",
             unsafe_allow_html=True,
@@ -189,7 +189,7 @@ def render_backtest_page(st_obj, ticker: str, period: str = "2y"):
                 c: "{:.2f}" for c in summary_df.columns if "Sharpe" in c
             } | {
                 "# Trades": "{:.0f}"
-            }).applymap(
+            }).map(
                 lambda v: f"color: {'#4ade80' if v > 0 else '#f87171'}" if isinstance(v, float) else "",
                 subset=[c for c in summary_df.columns if "Return" in c or "Sharpe" in c]
             )

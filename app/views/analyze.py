@@ -1,6 +1,7 @@
 """Analyze page."""
 import plotly.graph_objects as go
 import pandas as pd
+import streamlit as st
 import sys
 import os
 
@@ -10,6 +11,7 @@ from modules.backtest import sma_crossover_backtest, get_backtest_stats
 from modules.sector import get_sector_comparison
 from modules.news import overall_sentiment
 from modules.db import alerts_load, alerts_add
+from modules.setup_backtest import backtest_strategy, backtest_stability
 from app.services.analysis import run_analysis
 
 
@@ -17,12 +19,57 @@ color_map = {"green": "#4ade80", "red": "#f87171", "orange": "#e2c882"}
 icon_map = {"good": "✅", "warning": "⚠️", "neutral": "➖", "unknown": "➖"}
 sent_icon = {"positive": "🟢", "negative": "🔴", "neutral": "🟡", "unknown": "⚪"}
 
+# Setup types the algo detects vs the strategies setup_backtest.py can actually
+# test — RANGE/BREAKDOWN have no matching backtest strategy.
+_SETUP_TO_STRATEGY = {
+    "BREAKOUT": "BREAKOUT", "PULLBACK": "PULLBACK", "MEAN_REVERSION": "MEAN_REVERSION",
+    "RANGE": "RANGE", "BREAKDOWN": "BREAKDOWN",
+}
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _cached_validated_backtest(ticker: str, period: str):
+    """Backtest the composite of ONLY the price signals with real measured IC
+    (see modules.factor_analysis.compute_composite_signal) — same split-half
+    stability gate as everything else. This is the verdict engine: built from
+    signals that have shown real predictive power, not hand-picked weights."""
+    from modules.cached_fetch import cached_ohlcv
+    from modules.indicators import add_common_indicators
+    from modules.volume import add_volume_indicators
+    bdf = cached_ohlcv(ticker, period)
+    bdf = add_common_indicators(bdf)
+    bdf = add_volume_indicators(bdf)
+    full = backtest_strategy(bdf, "VALIDATED")
+    full["stability"] = backtest_stability(bdf, "VALIDATED")
+    return full
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _cached_setup_backtest(ticker: str, period: str, strategy: str):
+    """Real historical win-rate/Sharpe for this ticker's detected setup, PLUS
+    a split-half stability check — a single blended backtest over the whole
+    period can look like an edge from one lucky stretch, so this only calls
+    it validated if the edge holds up in both halves of history independently."""
+    from modules.cached_fetch import cached_ohlcv
+    from modules.indicators import add_common_indicators
+    from modules.volume import add_volume_indicators
+    bdf = cached_ohlcv(ticker, period)
+    bdf = add_common_indicators(bdf)
+    bdf = add_volume_indicators(bdf)
+    full = backtest_strategy(bdf, strategy)
+    full["stability"] = backtest_stability(bdf, strategy)
+    return full
+
 
 def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest, fast_win, slow_win):
     """Render analyze page."""
+    # LLM backend toggle — persisted in session state
+    if "llm_backend" not in st_obj.session_state:
+        st_obj.session_state["llm_backend"] = "local"
+
     with st_obj.spinner(f"Loading {ticker}..."):
         try:
-            analysis = run_analysis(ticker, period)
+            analysis = run_analysis(ticker, period, llm_backend=st_obj.session_state["llm_backend"])
         except Exception as e:
             st_obj.error(f"Failed to fetch data: {e}")
             st_obj.stop()
@@ -72,9 +119,6 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
     price_sign = "+" if price_change >= 0 else ""
 
     v_hex = color_map.get(verdict_result["color"], "#888888")
-    v_bg = f"{v_hex}14"
-    confidence_pct = int(verdict_result["confidence"] * 100)
-    bd = verdict_result["breakdown"]
 
     # ── SECTION 1: COMPANY HEADER ─────────────────────────────────────────────────
     mc = f"${info.get('marketCap',0)/1e9:.1f}B" if info.get("marketCap") else "N/A"
@@ -126,71 +170,65 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
 {analyst_upside_html}
 """, unsafe_allow_html=True)
 
-    # ── SECTION 2: VERDICT HERO ───────────────────────────────────────────────────
-    # Build 3 top signal bullets (most impactful signals across all layers)
-    all_signals = tech_summary["signals"] + fund_signals
-    top_bullets = []
-    for label, status, text in all_signals:
-        if status in ("good", "warning") and len(top_bullets) < 3:
-            icon = "✅" if status == "good" else "⚠️"
-            top_bullets.append((icon, text))
-    top_bullets = top_bullets[:3]
+    # ── SECTION 1.5: VALIDATED VERDICT ──────────────────────────────────────────
+    # The old BUY/HOLD/SELL verdict was hand-weighted across 60+ signals, most
+    # of which are fundamentals/insider/sentiment snapshots with no historical
+    # point-in-time data — meaning they can NEVER be checked against outcomes
+    # with this data source. This verdict uses ONLY the ~10 price signals that
+    # DO have enough history to measure real predictive power (IC), weighted
+    # by that measured power, and the resulting rule is itself backtested with
+    # the same split-half stability gate as everything else on this page.
+    from modules.factor_analysis import compute_composite_signal
+    _composite_series, _used_signals, _ic_per_signal = compute_composite_signal(df)
+    _composite_now = _composite_series.iloc[-1] if not _composite_series.empty else None
 
-    bullets_html = "".join(
-        f'<div class="reason-bullet"><span>{icon}</span><span>{text}</span></div>'
-        for icon, text in top_bullets
-    )
+    if _composite_now is not None and not pd.isna(_composite_now):
+        if _composite_now > 0.15:
+            _verdict_word, _verdict_color = "BUY", "#4ade80"
+        elif _composite_now < -0.15:
+            _verdict_word, _verdict_color = "SELL", "#f87171"
+        else:
+            _verdict_word, _verdict_color = "HOLD", "#e2c882"
 
-    # Score bars — each category has a fixed color
-    def bar_html(score, label, weight, cat_color):
-        pct = int((score + 1) / 2 * 100)
-        return (f'<div class="score-bar-item">'
-                f'<div class="score-bar-label">{label} <span style="opacity:0.4">({weight})</span></div>'
-                f'<div class="score-bar-track"><div class="score-bar-fill" style="width:{pct}%;background:{cat_color}"></div></div>'
-                f'<div class="score-bar-value" style="color:{cat_color}">{score:+.2f}</div>'
-                f'</div>')
+        try:
+            _vbt = _cached_validated_backtest(ticker, period)
+        except Exception:
+            _vbt = None
+        _v_stability = _vbt.get("stability") if _vbt else None
+        _v_has_edge = (
+            _vbt and not _vbt.get("error") and _vbt.get("n_trades", 0) >= 5
+            and _v_stability and _v_stability.get("stable")
+        )
 
-    bars = (
-        bar_html(bd["technical"], "Technical", "40%", "#e2c882") +
-        bar_html(bd["fundamental"], "Fundamental", "35%", "#4ade80") +
-        bar_html(bd["sentiment"], "Sentiment", "25%", "#818cf8")
-    )
+        _used_names = {
+            "rsi_signal": "RSI", "macd_signal_val": "MACD", "momentum_5d": "5d momentum",
+            "momentum_21d": "21d momentum", "bb_position": "Bollinger position",
+            "volume_surge": "Volume surge", "price_vs_sma20": "vs SMA20",
+            "price_vs_sma50": "vs SMA50", "trend_strength": "Trend strength",
+            "volatility_regime": "Volatility regime",
+        }
+        _used_list = ", ".join(_used_names.get(s, s) for s in _used_signals) if _used_signals else "none"
 
-    st_obj.markdown(f"""
-<div class="verdict-hero" style="background:{v_bg}; border: 1px solid {v_hex}30;">
-  <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:24px;">
-    <div>
-      <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;">
-        <div class="verdict-word" style="color:{v_hex}">{verdict_result["verdict"]}</div>
-        <div style="font-size:1.1rem;font-weight:500;color:rgba(255,255,255,0.5);padding:4px 14px;border:1px solid rgba(255,255,255,0.15);border-radius:4px">{confidence_pct}% confident</div>
-      </div>
-    </div>
-    <div style="flex:1; min-width:260px; max-width:480px;">
-      {bullets_html}
-    </div>
-  </div>
-  <div class="score-bar-row" style="margin-top:24px">
-    {bars}
-  </div>
-</div>
-""", unsafe_allow_html=True)
+        if _v_has_edge:
+            _v_wr, _v_sh, _v_nt = _vbt["win_rate_pct"], _vbt["sharpe"], _vbt["n_trades"]
+            _v_track = f'<span style="color:#4ade80;font-weight:600">✓ this exact rule: {_v_wr:.0f}% win rate, Sharpe {_v_sh:.2f}, {_v_nt} trades, held up in both halves of history</span>'
+        else:
+            _v_track = '<span style="color:#f87171">⚠ this exact rule has not cleared the backtest bar yet on this ticker/period — treat the verdict as a lean, not a track record</span>'
 
-    one_liner = thesis.get("one_liner", "")
-    if one_liner:
         st_obj.markdown(f"""
-<div style="padding:10px 16px;background:rgba(255,255,255,0.04);border-radius:8px;margin-bottom:12px;border-left:3px solid {v_hex}60;font-size:0.9rem;opacity:0.85;font-style:italic">
-  🧠 {one_liner}
+<div style="border:1px solid {_verdict_color}50;background:{_verdict_color}10;border-radius:12px;padding:22px 26px;margin-bottom:12px">
+  <div style="display:flex;align-items:baseline;gap:16px;flex-wrap:wrap">
+    <span style="font-size:2.4rem;font-weight:800;color:{_verdict_color};font-family:'JetBrains Mono',monospace">{_verdict_word}</span>
+    <span style="opacity:0.6;font-size:0.9rem">composite {_composite_now:+.3f} · built from {len(_used_signals)} validated signals: {_used_list}</span>
+  </div>
+  <div style="margin-top:10px;font-size:0.8rem">{_v_track}</div>
+  <div style="margin-top:10px;font-size:0.7rem;opacity:0.4">Not a simple average — each signal is flipped to match the direction it has ACTUALLY moved this ticker historically (see "direction" in the correlation check below), so a signal reading positive today can still pull the verdict down if it's historically been a contrarian indicator for this stock.</div>
 </div>
 """, unsafe_allow_html=True)
+    else:
+        st_obj.warning("Not enough price history to build a validated verdict for this ticker/period yet.")
 
-    # ── SECTION 3: SMART TRADE STRATEGY ──────────────────────────────────────────
-    _rr = smart_trade["risk_reward"]
-    _rr_color = "#4ade80" if _rr >= 2 else "#e2c882" if _rr >= 1 else "#f87171"
-    _cv = smart_trade["conviction"]
-    _cv_color = "#4ade80" if _cv == "high" else "#e2c882" if _cv == "medium" else "#f87171"
-    _entry_disc = smart_trade["discount_pct"]
-    _pos_size = smart_trade.get("position_size_pct", 100)
-    _pos_size_color = "#e2c882" if _pos_size >= 75 else "#4ade80" if _pos_size >= 50 else "#f87171"
+    # ── SECTION 2: SETUP + BACKTEST HEADLINE (supporting context) ──────────────
     _setup = smart_trade.get("setup_type", "RANGE")
     _setup_colors = {
         "BREAKOUT": ("#4ade80", "rgba(74,222,128,0.12)"),
@@ -200,69 +238,170 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
         "RANGE": ("#94a3b8", "rgba(148,163,184,0.10)"),
     }
     _sc, _sbg = _setup_colors.get(_setup, ("#94a3b8", "rgba(148,163,184,0.10)"))
+    _bt_strategy = _SETUP_TO_STRATEGY.get(_setup)
+    _bt = None
+    if _bt_strategy:
+        try:
+            _bt = _cached_setup_backtest(ticker, period, _bt_strategy)
+        except Exception:
+            _bt = None
+
+    _stability = _bt.get("stability") if _bt else None
+    _has_edge = (
+        _bt and not _bt.get("error") and _bt.get("n_trades", 0) >= 5
+        and _stability and _stability.get("stable")
+    )
+    if _has_edge:
+        _wr, _sh, _nt = _bt["win_rate_pct"], _bt["sharpe"], _bt["n_trades"]
+        _bt_color = "#4ade80" if _wr >= 55 and _sh > 0 else "#e2c882" if _wr >= 45 else "#f87171"
+        _headline = f'<span style="font-weight:800;font-size:2.2rem;color:{_bt_color}">{_wr:.0f}%</span> <span style="opacity:0.6">win rate · Sharpe {_sh:.2f} · {_nt} trades</span>'
+        _sub = "✓ edge held up independently in both halves of this period, not just one blended run"
+    else:
+        _headline = '<span style="font-weight:700;font-size:1.4rem;color:#f87171">No validated edge</span>'
+        if not _bt_strategy:
+            _why = f"setup type {_setup} has no backtest coverage"
+        elif not _bt or _bt.get("error"):
+            _why = "backtest failed to run"
+        elif _bt.get("n_trades", 0) < 5:
+            _why = f"only {_bt.get('n_trades',0)} historical {_bt_strategy.lower()} trades in this period — too few to trust"
+        else:
+            _why = f"a single run over the whole period looked fine, but split in half: {_stability.get('reason', 'unstable')} — that's a strong sign it's noise, not edge"
+
     st_obj.markdown(f"""
-<div class="trade-box">
-  <div style="margin-bottom:14px;display:flex;align-items:center;justify-content:space-between">
-    <div style="font-size:0.75rem;opacity:0.45;letter-spacing:0.06em">Smart trade strategy</div>
-    <span style="font-size:0.7rem;font-weight:600;letter-spacing:0.08em;color:{_sc};background:{_sbg};border:1px solid {_sc}33;border-radius:4px;padding:2px 8px">{_setup}</span>
-  </div>
-  <div class="trade-row">
-    <div class="trade-item">
-      <div class="trade-label" style="opacity:0.7">Limit Entry</div>
-      <div class="trade-value" style="color:#e2c882;font-size:1.4rem;font-weight:700">${smart_trade['limit_entry']:.2f}</div>
-      <div class="trade-sub">{'↑ buy the break' if _setup == 'BREAKOUT' else f'−{abs(_entry_disc):.1f}% from now'}</div>
+<div style="background:{_sbg};border:1px solid {_sc}40;border-radius:12px;padding:22px 26px;margin-bottom:16px">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+    <div>
+      <div style="font-size:0.7rem;letter-spacing:0.08em;opacity:0.5;margin-bottom:6px">DETECTED SETUP</div>
+      <span style="font-size:0.75rem;font-weight:700;letter-spacing:0.08em;color:{_sc};background:{_sc}22;border:1px solid {_sc}44;border-radius:4px;padding:3px 10px">{_setup}</span>
     </div>
-    <div class="trade-item">
-      <div class="trade-label" style="opacity:0.7">Stop Loss</div>
-      <div class="trade-value" style="color:#f87171;font-size:1.4rem;font-weight:700">${smart_trade['stop_loss']:.2f}</div>
-      <div class="trade-sub" style="font-size:0.7rem;opacity:0.5">{smart_trade['stop_loss_reason'][:30]}</div>
-    </div>
-    <div class="trade-item">
-      <div class="trade-label" style="opacity:0.7">Take Profit 1</div>
-      <div class="trade-value" style="color:#4ade80;font-size:1.4rem;font-weight:700">${smart_trade['take_profit_1']:.2f}</div>
-      <div class="trade-sub">Take 50% here</div>
-    </div>
-    <div class="trade-item">
-      <div class="trade-label" style="opacity:0.7">Take Profit 2</div>
-      <div class="trade-value" style="color:#4ade80;font-size:1.4rem;font-weight:700">${smart_trade['take_profit_2']:.2f}</div>
-      <div class="trade-sub">Let rest run</div>
-    </div>
-    {'<div style="background:rgba(255,23,68,0.08);border-radius:8px;padding:4px;border:1px solid rgba(255,23,68,0.3)"><div class="trade-item">' if _rr < 1 else '<div class="trade-item">'}
-      <div class="trade-label" style="opacity:0.7">Risk / Reward</div>
-      <div class="trade-value" style="color:{_rr_color};font-size:1.4rem;font-weight:700">1 : {_rr}</div>
-      <div class="trade-sub">{'⚠️ Poor — avoid' if _rr < 1 else '✓ Acceptable' if _rr < 2 else '✓✓ Good'}</div>
-    {'</div></div>' if _rr < 1 else '</div>'}
-    <div class="trade-item">
-      <div class="trade-label" style="opacity:0.7">Position Size</div>
-      <div class="trade-value" style="color:{_pos_size_color};font-size:1.4rem;font-weight:700">{_pos_size}%</div>
-      <div class="trade-sub">VIX-scaled</div>
+    <div style="text-align:right">
+      <div style="font-size:0.7rem;letter-spacing:0.08em;opacity:0.5;margin-bottom:6px">HISTORICAL PERFORMANCE (backtested, split-half checked)</div>
+      {_headline}
     </div>
   </div>
-  <div style="margin-top:14px;padding:8px 16px;background:rgba(255,255,255,0.04);border-radius:8px;display:flex;justify-content:center;gap:24px;align-items:center">
-    <span style="font-size:0.9rem">Conviction: <strong style="color:{_cv_color};font-size:1rem">{_cv.capitalize()}</strong></span>
-    <span style="opacity:0.3">·</span>
-    <span style="font-size:0.9rem;opacity:0.7">Horizon: {smart_trade['time_horizon']}</span>
-  </div>
-  <div style="font-size:0.75rem;opacity:0.45;margin-top:10px">
-    Entry rationale: {smart_trade['limit_entry_reason']}
-  </div>
+  {f'<div style="margin-top:10px;font-size:0.75rem;opacity:0.5">⚠️ {_why} — nothing below this line has been checked against history, treat it as reading material, not a trade plan.</div>' if not _has_edge else f'<div style="margin-top:10px;font-size:0.7rem;opacity:0.4">{_sub}</div>'}
 </div>
 """, unsafe_allow_html=True)
 
-    # LLM rationale block (shown if LiteLLM returned data)
-    _entry_r = llm_rationale.get("entry_rationale")
-    _risk_r  = llm_rationale.get("risk_rationale")
-    _time_r  = llm_rationale.get("timing_note")
-    if _entry_r or _risk_r or _time_r:
+    one_liner = thesis.get("one_liner", "")
+    if one_liner:
+        # Strip the old unvalidated engine's own BUY/HOLD/SELL word — it can
+        # (and did) contradict the real verdict card above, which is exactly
+        # the "two verdicts fighting" bug this session started by fixing.
+        import re as _re
+        _one_liner_facts = _re.sub(r"\s*(BUY|HOLD\s*/\s*WATCH|SELL\s*/\s*AVOID)\.?\s*$", "", one_liner).strip()
         st_obj.markdown(f"""
-<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);
-            border-radius:10px;padding:16px 20px;margin:-8px 0 16px 0">
-  <div style="font-size:0.7rem;opacity:0.4;letter-spacing:0.08em;margin-bottom:10px">🤖 AI TRADE COMMENTARY</div>
-  {'<div style="font-size:0.85rem;margin-bottom:8px"><span style="opacity:0.5">Entry:</span> ' + _entry_r + '</div>' if _entry_r else ''}
-  {'<div style="font-size:0.85rem;margin-bottom:8px"><span style="opacity:0.5;color:#f87171">Risk:</span> ' + _risk_r + '</div>' if _risk_r else ''}
-  {'<div style="font-size:0.85rem"><span style="opacity:0.5">Timing:</span> ' + _time_r + '</div>' if _time_r else ''}
+<div style="padding:10px 16px;background:rgba(255,255,255,0.04);border-radius:8px;margin-bottom:12px;border-left:3px solid {v_hex}60;font-size:0.9rem;opacity:0.85;font-style:italic">
+  🧠 {_one_liner_facts} <span style="opacity:0.5">(fundamentals summary — not the verdict above, no verdict word here on purpose)</span>
 </div>
 """, unsafe_allow_html=True)
+
+    # ── SECTION 3: EXPLORATORY CORRELATION CHECK (NOT a validated edge) ────────
+    # A Spearman IC on ~1 ticker's price history is a correlation on a small,
+    # noisy sample — no out-of-sample split, no multiple-testing correction,
+    # no trading costs. It never clears the bar the backtest headline above
+    # does. Collapsed by default — a table that has to disclaim itself the
+    # moment you read it doesn't belong in front of every visitor by default.
+    with st_obj.expander("🔬 Exploratory correlation check (raw stats, not a validated edge — for the curious only)"):
+        st_obj.caption(
+            "Raw Spearman correlation between each signal and forward returns, this ticker only. "
+            "Not a backtest, not walk-forward tested, no trading costs — do not read this as a validated edge, even the strong-looking numbers."
+        )
+        st_obj.caption(
+            "**Direction column** = has this signal's current reading historically moved WITH forward returns (▲ normal) "
+            "or AGAINST them (▼ contrarian, i.e. inverted) for this specific stock? The verdict above uses this direction "
+            "to decide whether a positive-looking reading counts as bullish or bearish — that's why a signal can look "
+            "positive here and still pull the verdict down."
+        )
+        try:
+            from modules.factor_analysis import compute_signals_df, compute_ic, ic_summary
+            _sig_df = compute_signals_df(df)
+            _ic_df = compute_ic(_sig_df, df["close"], horizons=[1, 5, 10, 21])
+            _ic_sum = ic_summary(_ic_df)
+            _ic_cols_signed = [c for c in _ic_df.columns if c[1] == "ic"]
+            _mean_ic_signed = _ic_df[_ic_cols_signed].astype(float).mean(axis=1)
+            _sig_names = {
+                "rsi_signal": "RSI", "macd_signal_val": "MACD", "momentum_5d": "5-day momentum",
+                "momentum_21d": "21-day momentum", "bb_position": "Bollinger position",
+                "volume_surge": "Volume surge", "price_vs_sma20": "Price vs SMA20",
+                "price_vs_sma50": "Price vs SMA50", "trend_strength": "Trend strength",
+                "volatility_regime": "Volatility regime",
+            }
+            _mean_ic_abs = _ic_sum["mean_ic_abs"]
+            _rows_shown = 0
+            for sig_key in _ic_sum.index:
+                ic_abs = _mean_ic_abs.loc[sig_key]
+                if pd.isna(ic_abs) or ic_abs < 0.05:
+                    continue
+                cur_val = _sig_df[sig_key].iloc[-1] if sig_key in _sig_df.columns else None
+                if cur_val is None or pd.isna(cur_val):
+                    continue
+                _rows_shown += 1
+                _signed = _mean_ic_signed.get(sig_key, 0)
+                _dir_arrow = "▲ normal" if _signed >= 0 else "▼ contrarian"
+                _dir_color = "#4ade80" if _signed >= 0 else "#e2c882"
+                st_obj.markdown(
+                    f'<div style="display:grid;grid-template-columns:1.4fr 0.8fr 0.9fr 0.9fr;align-items:center;padding:6px 14px;'
+                    f'background:rgba(255,255,255,0.02);border-radius:6px;margin-bottom:3px;font-size:0.8rem;opacity:0.85">'
+                    f'<span>{_sig_names.get(sig_key, sig_key)}</span>'
+                    f'<span style="font-family:\'JetBrains Mono\',monospace;opacity:0.7;text-align:right">{cur_val:+.3f}</span>'
+                    f'<span style="font-family:\'JetBrains Mono\',monospace;text-align:right">corr {ic_abs:.3f}</span>'
+                    f'<span style="color:{_dir_color};font-size:0.75rem;text-align:right">{_dir_arrow}</span>'
+                    f'</div>', unsafe_allow_html=True
+                )
+            if _rows_shown == 0:
+                st_obj.caption("No signal shows even a weak correlation (|corr| ≥ 0.05) for this ticker over this period.")
+        except Exception as e:
+            st_obj.caption(f"Correlation check unavailable: {e}")
+
+    # ── LLM SIGNAL SUMMARY ───────────────────────────────────────────────────
+    # Pure explainer — no trade_action/conviction/position_size. The LLM has
+    # no data edge over the algo; asking it to "decide" was just a second
+    # unvalidated opinion dressed up as a competing verdict. It only summarizes
+    # signals that already exist above.
+    _entry_r     = llm_rationale.get("entry_rationale")
+    _risk_r      = llm_rationale.get("risk_rationale")
+    _conflict_r  = llm_rationale.get("key_conflict")
+    _src         = llm_rationale.get("_source", "")
+    _cost        = llm_rationale.get("_cost_usd")
+    _has_llm     = any([_entry_r, _risk_r, _conflict_r])
+
+    # Backend toggle row
+    _col_llm, _col_btn = st_obj.columns([3, 1])
+    with _col_llm:
+        _src_label = {"haiku_cli": "✨ AI (Haiku · subscription)", "haiku_api": "✨ AI (Haiku · API)", "batch": "✨ AI (Haiku · batch)", "local": "🤖 AI (Local LLM)"}.get(_src, "🤖 AI")
+        _cost_badge = f' <span style="color:#4ade80;font-size:0.7rem">${_cost:.4f}</span>' if _cost else ""
+        st_obj.markdown(
+            f"<span style='font-size:0.75rem;opacity:0.45;letter-spacing:0.06em'>{_src_label if _has_llm else ('✨ AI (Haiku)' if st_obj.session_state['llm_backend']=='haiku' else '🤖 AI (Local LLM)')}{_cost_badge}</span>",
+            unsafe_allow_html=True,
+        )
+    with _col_btn:
+        _is_haiku = st_obj.session_state["llm_backend"] == "haiku"
+        if st_obj.button(
+            "⚡ Use Haiku" if not _is_haiku else "🏠 Use Local",
+            key="llm_toggle",
+            help="Haiku: Claude Code subscription or ANTHROPIC_API_KEY. Local: LiteLLM localhost:4000.",
+            use_container_width=True,
+        ):
+            st_obj.session_state["llm_backend"] = "local" if _is_haiku else "haiku"
+            st_obj.rerun()
+
+    if _has_llm:
+        st_obj.markdown(f"""
+<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.1);
+            border-radius:10px;padding:16px 20px;margin-bottom:16px">
+  {'<div style="font-size:0.82rem;margin-bottom:6px"><span style="opacity:0.45">Bull case:</span> ' + _entry_r + '</div>' if _entry_r else ''}
+  {'<div style="font-size:0.82rem;margin-bottom:6px"><span style="opacity:0.45;color:#f87171">Bear case:</span> ' + _risk_r + '</div>' if _risk_r else ''}
+  {'<div style="font-size:0.82rem;padding-top:10px;border-top:1px solid rgba(255,255,255,0.05)"><span style="opacity:0.45;color:#e2c882">⚡ Conflict:</span> ' + _conflict_r + '</div>' if _conflict_r else ''}
+  <div style="font-size:0.68rem;opacity:0.35;margin-top:10px">Plain-language summary of the signals above — not a recommendation, the model has no data edge over the algo.</div>
+</div>
+""", unsafe_allow_html=True)
+    else:
+        st_obj.caption(
+            "⚠️ AI summary unavailable right now — the "
+            + ("Haiku" if st_obj.session_state["llm_backend"] == "haiku" else "local LLM")
+            + " call failed or returned nothing. Try again, or switch backend with the button above."
+        )
 
     # ── SECTION 4: TABS FOR DRILL-DOWNS ────────────────────────────────────────────────────
     tab_chart, tab_fund, tab_analyst, tab_news, tab_backtest, tab_more = st_obj.tabs([
@@ -700,7 +839,7 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
 
     with tab_more:
         # Exit strategy
-        with st_obj.expander("🚪 Exit Strategy & Conditions"):
+        with st_obj.expander("🚪 Exit Strategy & Conditions (unvalidated — algo-generated levels, not backtested)"):
             st_obj.markdown(f"**TP rationale:** {smart_trade['take_profit_reason']}" if smart_trade['take_profit_reason'] else "")
             for cond in smart_trade["exit_conditions"]:
                 icon = "🛑" if "stop" in cond.lower() or "drops below" in cond.lower() else "💰" if "profit" in cond.lower() or "tp" in cond.lower() else "⚠️"
@@ -708,10 +847,12 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
                 st_obj.markdown(f"{icon} {safe_cond}")
 
         # AI Thesis
-        with st_obj.expander(f"🧠 AI Thesis — {thesis.get('headline', ticker)}"):
+        with st_obj.expander(f"🧠 AI Thesis (unvalidated) — {thesis.get('headline', ticker)}"):
             one_liner = thesis.get("one_liner", "")
             if one_liner:
-                st_obj.markdown(f"*{one_liner}*")
+                import re as _re
+                _one_liner_facts = _re.sub(r"\s*(BUY|HOLD\s*/\s*WATCH|SELL\s*/\s*AVOID)\.?\s*$", "", one_liner).strip()
+                st_obj.markdown(f"*{_one_liner_facts}* — fundamentals only, not the verdict above")
                 st_obj.divider()
             col_bull, col_bear = st_obj.columns(2)
             with col_bull:
