@@ -9,7 +9,7 @@ from modules.db import wl_load, wl_add, cache_invalidate_ticker, init_db, alerts
 from modules.fetch import get_ohlcv
 from modules.notifications import alert_checker
 from modules.llm_batch import submit_portfolio_batch
-from app.views import watchlist, portfolio, alerts, eli5, analyze, screener, backtest, telemetry
+from app.views import watchlist, portfolio, alerts, eli5, analyze, screener, backtest, telemetry, model_ledger
 
 # ── PAGE CONFIG ─────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Trade Lab", layout="wide", initial_sidebar_state="expanded")
@@ -190,7 +190,7 @@ if not alert_checker.is_running:
 
 # ── SIDEBAR ────────────────────────────────────────────────────────────────────
 with st.sidebar:
-    pages = ["📊 Analyze", "⭐ Watchlist", "🔍 Screener", "💼 Portfolio", "🔔 Alerts", "📚 ELI5", "🧪 Backtest", "💰 LLM Usage"]
+    pages = ["📊 Analyze", "⭐ Watchlist", "🔍 Screener", "💼 Portfolio", "🔔 Alerts", "📚 ELI5", "🧪 Backtest", "💰 LLM Usage", "🧾 Model Ledger"]
     default_page_idx = 0
     page = st.radio("Page", pages, label_visibility="collapsed", index=default_page_idx)
     if "page_override" in st.session_state:
@@ -249,3 +249,5 @@ elif page == "🧪 Backtest":
     backtest.render_backtest_page(st, ticker, period)
 elif page == "💰 LLM Usage":
     telemetry.render_telemetry_page(st)
+elif page == "🧾 Model Ledger":
+    model_ledger.render_model_ledger_page(st)
