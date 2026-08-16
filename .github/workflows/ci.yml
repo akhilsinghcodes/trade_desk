@@ -52,7 +52,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install test deps
-        run: pip install pytest pandas yfinance
+        run: pip install pytest pandas yfinance scipy joblib finta
 
       - name: Run tests
         working-directory: trade_desk
@@ -69,7 +69,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install test deps
-        run: pip install pytest pandas numpy scipy xgboost yfinance
+        run: pip install pytest pandas numpy scipy xgboost yfinance finta
 
       - name: Run tests
         working-directory: trade_ml
