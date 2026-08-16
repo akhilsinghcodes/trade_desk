@@ -106,6 +106,7 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
     tech_summary = analysis["tech_summary"]
     verdict_result = analysis["verdict_result"]
     swings = analysis["swings"]
+    trade = analysis.get("trade", {})
     smart_trade = analysis["smart_trade"]
     thesis = analysis["thesis"]
     llm_rationale = analysis.get("llm_rationale", {}) or {}
@@ -189,6 +190,12 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
             _verdict_word, _verdict_color = "SELL", "#f87171"
         else:
             _verdict_word, _verdict_color = "HOLD", "#e2c882"
+
+        # ATR trade levels must follow the verdict actually shown above (the
+        # validated composite), not the unvalidated combined_score() verdict
+        # analysis.py computed trade from — those two disagree in practice.
+        from modules.support_resistance import suggest_trade as _suggest_trade
+        trade = _suggest_trade(df, _verdict_word)
 
         try:
             _vbt = _cached_validated_backtest(ticker, period)
@@ -838,6 +845,16 @@ def render_analyze_page(st_obj, ticker, period, show_bb, show_sma, run_backtest,
                     st_obj.error(f"Backtest failed: {e}")
 
     with tab_more:
+        # ATR barrier trade levels — backtested
+        if trade.get("action") not in (None, "HOLD / WATCH"):
+            with st_obj.expander(f"🎯 ATR Trade Levels (backtested) — {trade['action']}", expanded=True):
+                col_e, col_s, col_t = st_obj.columns(3)
+                col_e.metric("Entry", f"${trade['entry']:.2f}")
+                col_s.metric("Stop", f"${trade['stop_loss']:.2f}")
+                col_t.metric("Target", f"${trade['take_profit']:.2f}")
+                st_obj.caption(f"R:R {trade['risk_reward_ratio']}:1  ·  ATR ${trade['atr']:.2f}")
+                st_obj.info(trade.get("backtest_note", ""))
+
         # Exit strategy
         with st_obj.expander("🚪 Exit Strategy & Conditions (unvalidated — algo-generated levels, not backtested)"):
             st_obj.markdown(f"**TP rationale:** {smart_trade['take_profit_reason']}" if smart_trade['take_profit_reason'] else "")

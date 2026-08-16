@@ -72,7 +72,8 @@ def _load_predictions() -> pd.DataFrame | None:
         return None
     try:
         df = pd.read_sql_query(
-            "SELECT date, ticker, math_score, price_at_prediction, checked, realized_return FROM predictions ORDER BY date DESC",
+            "SELECT date, ticker, pred_return, weight, leg, model_version, price_at_prediction, "
+            "checked, realized_return FROM predictions ORDER BY date DESC",
             conn
         )
         return df if not df.empty else None
@@ -83,7 +84,7 @@ def _load_predictions() -> pd.DataFrame | None:
 def _compute_hit_rate(checked_df: pd.DataFrame) -> float | None:
     """
     Compute hit rate: for each date, split checked rows into above-median vs below-median
-    math_score, compare avg realized_return, return % of dates where above-median beat below-median.
+    pred_return, compare avg realized_return, return % of dates where above-median beat below-median.
     """
     if len(checked_df) < 10:
         return None
@@ -94,9 +95,9 @@ def _compute_hit_rate(checked_df: pd.DataFrame) -> float | None:
     for date, group in checked_df.groupby("date"):
         if len(group) < 2:
             continue
-        median_score = group["math_score"].median()
-        above_median = group[group["math_score"] >= median_score]
-        below_median = group[group["math_score"] < median_score]
+        median_score = group["pred_return"].median()
+        above_median = group[group["pred_return"] >= median_score]
+        below_median = group[group["pred_return"] < median_score]
 
         if len(above_median) > 0 and len(below_median) > 0:
             avg_above = above_median["realized_return"].mean()
@@ -171,8 +172,10 @@ def render_model_ledger_page(st_obj):
     # Pending predictions
     if not pending_df.empty:
         st_obj.markdown("**Pending** (awaiting outcome)")
-        pending_display = pending_df[["date", "ticker", "math_score", "price_at_prediction"]].copy()
-        pending_display["math_score"] = pending_display["math_score"].apply(lambda x: f"{x:.4f}")
+        pending_display = pending_df[["date", "ticker", "pred_return", "weight", "leg",
+                                       "model_version", "price_at_prediction"]].copy()
+        pending_display["pred_return"] = pending_display["pred_return"].apply(lambda x: f"{x:.4f}")
+        pending_display["weight"] = pending_display["weight"].apply(lambda x: f"{x:+.3f}")
         pending_display["price_at_prediction"] = pending_display["price_at_prediction"].apply(lambda x: f"${x:.2f}")
         st_obj.dataframe(pending_display, use_container_width=True, hide_index=True)
     else:
@@ -183,8 +186,10 @@ def render_model_ledger_page(st_obj):
     # Checked predictions
     if not checked_df.empty:
         st_obj.markdown("**Checked** (outcomes realized)")
-        checked_display = checked_df[["date", "ticker", "math_score", "price_at_prediction", "realized_return"]].copy()
-        checked_display["math_score"] = checked_display["math_score"].apply(lambda x: f"{x:.4f}")
+        checked_display = checked_df[["date", "ticker", "pred_return", "weight", "leg",
+                                       "model_version", "price_at_prediction", "realized_return"]].copy()
+        checked_display["pred_return"] = checked_display["pred_return"].apply(lambda x: f"{x:.4f}")
+        checked_display["weight"] = checked_display["weight"].apply(lambda x: f"{x:+.3f}")
         checked_display["price_at_prediction"] = checked_display["price_at_prediction"].apply(lambda x: f"${x:.2f}")
         checked_display["realized_return"] = checked_display["realized_return"].apply(
             lambda x: f"{x*100:.2f}%" if pd.notna(x) else "N/A"
@@ -213,9 +218,9 @@ def render_model_ledger_page(st_obj):
     col_corr, col_hitrate = st_obj.columns(2)
 
     if len(valid_checked) >= 3:
-        corr, pval = spearmanr(valid_checked["math_score"], valid_checked["realized_return"])
+        corr, pval = spearmanr(valid_checked["pred_return"], valid_checked["realized_return"])
         col_corr.metric(
-            "Spearman ρ (math_score vs realized_return)",
+            "Spearman ρ (pred_return vs realized_return)",
             f"{corr:.3f}",
             delta=f"p-value: {pval:.3f}" if pval < 0.05 else "p > 0.05"
         )
@@ -226,7 +231,7 @@ def render_model_ledger_page(st_obj):
     hit_rate = _compute_hit_rate(checked_df[checked_df["realized_return"].notna()])
     if hit_rate is not None:
         col_hitrate.metric(
-            "Hit Rate (above-median math_score beat below-median by date)",
+            "Hit Rate (above-median pred_return beat below-median by date)",
             f"{hit_rate:.1f}%"
         )
     else:

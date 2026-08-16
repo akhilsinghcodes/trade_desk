@@ -246,6 +246,7 @@ def run_analysis(ticker: str, period: str, interval: str = "1d", llm_backend: st
         "verdict_result": verdict_result,
         "swings": swings,
         "pivots": pivots,
+        "trade": trade,
         "smart_trade": smart_trade,
         "thesis": thesis,
         "llm_rationale": llm_rationale,
