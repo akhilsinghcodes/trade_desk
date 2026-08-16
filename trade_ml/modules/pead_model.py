@@ -107,7 +107,7 @@ def backtest_pead(oos_df: pd.DataFrame, threshold: float = 0.55) -> dict:
         sharpe = avg_ret / (std_ret + 1e-8) * np.sqrt(4)  # quarterly-ish
         print(f"  {label:<30}: n={len(subset):>4}  win={win_rate:.1%}  avg_rel_ret={avg_ret:+.2%}  sharpe={sharpe:.2f}")
 
-    print(f"\n  PEAD Backtest (OOS only):")
+    print("\n  PEAD Backtest (OOS only):")
     print(f"  {'Strategy':<30}: {'n':>4}  {'win%':>6}  {'avg_rel_ret':>11}  {'sharpe':>7}")
     stats(baseline, "Baseline (all events)")
     stats(buy, f"PEAD BUY (prob>={threshold})")

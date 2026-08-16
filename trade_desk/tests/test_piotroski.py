@@ -1,4 +1,3 @@
-import pytest
 from modules.piotroski import score_piotroski
 
 

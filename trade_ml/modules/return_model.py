@@ -172,7 +172,7 @@ def backtest_long_short(oos_df: pd.DataFrame, horizon_days: int = LOOKAHEAD_DAYS
     avg_bottom = res_df["bottom_ret"].mean()
     hit_rate = (res_df["spread"] > 0).mean()
 
-    print(f"\n  Long-Short Backtest (OOS, top vs bottom quintile):")
+    print("\n  Long-Short Backtest (OOS, top vs bottom quintile):")
     print(f"  Top quintile avg {horizon_days}d return    : {avg_top:+.3%}")
     print(f"  Bottom quintile avg {horizon_days}d return : {avg_bottom:+.3%}")
     print(f"  Spread (top - bottom)            : {avg_spread:+.3%}")
@@ -263,7 +263,7 @@ def analyze_turnover_and_costs(oos_df: pd.DataFrame, decile_frac: float = 0.1,
     print(f"  Gross annualized spread    : {gross_spread_per_rebalance * ann_factor:+.1%}")
     print(f"  Turnover per rebalance     : {turnover_per_rebalance:.1%}  (rebalance freq annualized: {annual_turnover:.0%})")
 
-    print(f"\n  Cost sweep (round-trip bps applied once per rebalance):")
+    print("\n  Cost sweep (round-trip bps applied once per rebalance):")
     print(f"  {'bps':>6}  {'net per rebalance':>18}  {'net annualized':>15}")
     cost_results = {}
     for bps in bps_sweep:

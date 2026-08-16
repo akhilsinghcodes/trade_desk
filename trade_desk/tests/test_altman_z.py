@@ -1,4 +1,3 @@
-import pytest
 from modules.altman_z import score_altman_z
 
 

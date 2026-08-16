@@ -25,9 +25,12 @@ def rule_score(row: pd.Series) -> float:
 
     # Technical
     rsi = row.get("rsi", 0.5)  # normalized 0-1
-    if rsi < 0.35:   signals.append(1.0)   # oversold = bullish
-    elif rsi > 0.70: signals.append(-1.0)  # overbought = bearish
-    else:            signals.append(0.0)
+    if rsi < 0.35:
+        signals.append(1.0)  # oversold = bullish
+    elif rsi > 0.70:
+        signals.append(-1.0)  # overbought = bearish
+    else:
+        signals.append(0.0)
 
     signals.append(1.0 if row.get("macd_above_signal", 0) > 0.5 else -1.0)
     signals.append(1.0 if row.get("sma20_vs_sma50", 0) > 0 else -1.0)
@@ -116,7 +119,7 @@ def run_backtest(model_dir: str = "models/", test_start: str = "2022-01-01") -> 
     cols_path = f"{model_dir}/feature_cols.json"
     try:
         with open(model_path, "rb") as f:
-            model = pickle.load(f)
+            pickle.load(f)
         with open(cols_path) as f:
             feature_cols = json.load(f)
         has_model = True
@@ -125,7 +128,6 @@ def run_backtest(model_dir: str = "models/", test_start: str = "2022-01-01") -> 
         print("  No trained model found — run train.py first")
 
     # Load dataset
-    import yfinance as yf
     from modules.ml_dataset import build_training_dataset, DEFAULT_TICKERS
 
     print("Building dataset for backtest (this uses cached data if available)...")
@@ -149,7 +151,7 @@ def run_backtest(model_dir: str = "models/", test_start: str = "2022-01-01") -> 
         "annualized_return_est": float(baseline_ret * 12),
         "sharpe": 0.0,
     }
-    print(f"Baseline (buy everything):")
+    print("Baseline (buy everything):")
     print(f"  Win rate     : {baseline_win:.1%}")
     print(f"  Avg return   : {baseline_ret:.2%} per trade")
 
@@ -163,7 +165,7 @@ def run_backtest(model_dir: str = "models/", test_start: str = "2022-01-01") -> 
 
     rule_result = simulate_trades(test_df, "rule_signal", threshold=0.60)
     results["rule_based"] = rule_result
-    print(f"\nRule-based (combined_score proxy, threshold=0.60):")
+    print("\nRule-based (combined_score proxy, threshold=0.60):")
     print(f"  Trades       : {rule_result['n_trades']:,}")
     print(f"  Win rate     : {rule_result['win_rate']:.1%}  (baseline {baseline_win:.1%})")
     print(f"  Avg return   : {rule_result['avg_return_per_trade']:.2%} per trade")

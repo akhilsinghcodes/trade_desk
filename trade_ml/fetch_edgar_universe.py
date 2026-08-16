@@ -50,7 +50,7 @@ def main():
     parser.add_argument("--output", default="tickers.txt")
     args = parser.parse_args()
 
-    print(f"Fetching SEC EDGAR company list...")
+    print("Fetching SEC EDGAR company list...")
     tickers = fetch_edgar_universe(limit=args.limit)
     print(f"  Got {len(tickers)} tickers (requested {args.limit})")
 

@@ -14,7 +14,7 @@ import xgboost as xgb
 from sklearn.metrics import accuracy_score, precision_score, recall_score
 import shap
 
-from modules.ml_dataset import get_feature_cols, TECHNICAL_FEATURES, FUNDAMENTAL_FEATURES, SENTIMENT_FEATURES, LABEL_LOOKAHEAD_DAYS
+from modules.ml_dataset import get_feature_cols, TECHNICAL_FEATURES, FUNDAMENTAL_FEATURES, LABEL_LOOKAHEAD_DAYS
 from modules.validation import passes_validation_gate
 
 

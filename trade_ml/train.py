@@ -36,13 +36,13 @@ def main():
         tickers = args.tickers or DEFAULT_TICKERS
 
     print(f"\n{'='*60}")
-    print(f"  Trade ML Walk-Forward Training Pipeline")
+    print("  Trade ML Walk-Forward Training Pipeline")
     print(f"{'='*60}")
     print(f"  Tickers : {len(tickers)} ({', '.join(tickers[:5])}{'...' if len(tickers) > 5 else ''})")
     print(f"  Period  : {args.period}")
     print(f"  Output  : {args.output}")
-    print(f"  Target  : trade outcome — WIN if TP hit before stop in 21d, LOSS otherwise")
-    print(f"  CV      : Walk-forward expanding quarterly windows 2022+")
+    print("  Target  : trade outcome — WIN if TP hit before stop in 21d, LOSS otherwise")
+    print("  CV      : Walk-forward expanding quarterly windows 2022+")
     print(f"{'='*60}\n")
 
     print("Step 1/2: Building dataset...")

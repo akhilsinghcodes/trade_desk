@@ -24,7 +24,6 @@ import sys
 import os
 import sqlite3
 import hashlib
-from datetime import datetime
 
 import yfinance as yf
 import pandas as pd
@@ -144,7 +143,7 @@ def main():
         tickers = [row[0] for row in watchlist_rows] if watchlist_rows else DEFAULT_TICKERS
 
     print(f"\n{'='*60}")
-    print(f"  Log Predictions — production engine (XGBoost + quintile + inv-vol)")
+    print("  Log Predictions — production engine (XGBoost + quintile + inv-vol)")
     print(f"{'='*60}")
     print(f"  Tickers : {len(tickers)} ({', '.join(tickers[:5])}{'...' if len(tickers) > 5 else ''})")
     print(f"{'='*60}\n")
@@ -209,7 +208,7 @@ def main():
     n_long = (ranked_df["leg"] == "long").sum()
     n_short = (ranked_df["leg"] == "short").sum()
     print(f"\n{'='*60}")
-    print(f"  Summary")
+    print("  Summary")
     print(f"{'='*60}")
     print(f"  Rows written: {count}  (long: {n_long}, short: {n_short}, excluded: {count - n_long - n_short})")
     print(f"  Model version: {version}")

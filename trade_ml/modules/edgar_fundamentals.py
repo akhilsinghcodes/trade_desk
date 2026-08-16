@@ -23,10 +23,8 @@ Usage:
   # those need market cap, which XBRL doesn't have)
 """
 import json
-import time
 import urllib.request
 import urllib.error
-from functools import lru_cache
 from typing import Optional
 import pandas as pd
 import numpy as np

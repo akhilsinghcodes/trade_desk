@@ -27,11 +27,11 @@ def main():
     tickers = args.tickers or DEFAULT_TICKERS
 
     print(f"\n{'='*60}")
-    print(f"  PEAD Earnings Model Pipeline")
+    print("  PEAD Earnings Model Pipeline")
     print(f"{'='*60}")
     print(f"  Tickers : {len(tickers)}")
-    print(f"  Target  : stock outperforms SPY >3% in 30d post-earnings")
-    print(f"  CV      : Walk-forward by year (expanding window)\n")
+    print("  Target  : stock outperforms SPY >3% in 30d post-earnings")
+    print("  CV      : Walk-forward by year (expanding window)\n")
 
     print("Step 1/3: Building earnings dataset...")
     t0 = time.time()
@@ -49,7 +49,7 @@ def main():
     summary = train_final_pead(df, model_dir=args.output)
 
     print(f"\n{'='*60}")
-    print(f"  PEAD Training Complete")
+    print("  PEAD Training Complete")
     print(f"{'='*60}")
     print(f"  Walk-forward avg acc  : {wf['avg_acc']:.1%}")
     print(f"  Walk-forward avg AUC  : {wf['avg_auc']:.3f}")

@@ -193,10 +193,12 @@ def _piotroski(t: yf.Ticker) -> int:
         inc = t.financials
         bs = t.balance_sheet
         cf = t.cashflow
-        if inc is None or inc.empty: return 0
+        if inc is None or inc.empty:
+            return 0
 
         def row(df, *keys):
-            if df is None or df.empty: return None
+            if df is None or df.empty:
+                return None
             for k in keys:
                 for idx in df.index:
                     if k.lower() in str(idx).lower():
@@ -204,7 +206,8 @@ def _piotroski(t: yf.Ticker) -> int:
             return None
 
         def v(s, i=0):
-            if s is None or len(s) <= i: return None
+            if s is None or len(s) <= i:
+                return None
             val = s.iloc[i]
             return None if pd.isna(val) else float(val)
 
@@ -228,19 +231,27 @@ def _piotroski(t: yf.Ticker) -> int:
 
         if ta0 and ta0 != 0:
             roa = ni0 / ta0 if ni0 is not None else None
-            if roa and roa > 0: score += 1
-            if ocf0 and ocf0 > 0: score += 1
+            if roa and roa > 0:
+                score += 1
+            if ocf0 and ocf0 > 0:
+                score += 1
             if roa is not None and ta1 and ni1 is not None and ta1 != 0:
-                if roa > ni1 / ta1: score += 1
-            if ocf0 and roa is not None and ocf0 / ta0 > roa: score += 1
+                if roa > ni1 / ta1:
+                    score += 1
+            if ocf0 and roa is not None and ocf0 / ta0 > roa:
+                score += 1
             if ltd0 is not None and ltd1 is not None and ta1:
-                if (ltd0 / ta0) < (ltd1 / ta1): score += 1
+                if (ltd0 / ta0) < (ltd1 / ta1):
+                    score += 1
             if ca0 and cl0 and ca1 and cl1 and cl0 != 0 and cl1 != 0:
-                if (ca0 / cl0) > (ca1 / cl1): score += 1
+                if (ca0 / cl0) > (ca1 / cl1):
+                    score += 1
             if rev0 and rev1 and ta1 and rev0 != 0 and ta1 != 0:
-                if (rev0 / ta0) > (rev1 / ta1): score += 1
+                if (rev0 / ta0) > (rev1 / ta1):
+                    score += 1
             if gp0 and rev0 and gp1 is not None and rev1 and rev0 != 0 and rev1 != 0:
-                if (gp0 / rev0) > (gp1 / rev1): score += 1
+                if (gp0 / rev0) > (gp1 / rev1):
+                    score += 1
     except Exception:
         pass
     return min(score, 9)
@@ -250,10 +261,12 @@ def _altman_z(t: yf.Ticker, info: dict) -> float | None:
     try:
         bs = t.balance_sheet
         inc = t.financials
-        if bs is None or bs.empty: return None
+        if bs is None or bs.empty:
+            return None
 
         def row(df, *keys):
-            if df is None or df.empty: return None
+            if df is None or df.empty:
+                return None
             for k in keys:
                 for idx in df.index:
                     if k.lower() in str(idx).lower():
@@ -261,12 +274,14 @@ def _altman_z(t: yf.Ticker, info: dict) -> float | None:
             return None
 
         def v(s, i=0):
-            if s is None or len(s) <= i: return None
+            if s is None or len(s) <= i:
+                return None
             val = s.iloc[i]
             return None if pd.isna(val) else float(val)
 
         ta = v(row(bs, "total assets"))
-        if not ta or ta == 0: return None
+        if not ta or ta == 0:
+            return None
 
         ca = v(row(bs, "current assets"))
         cl = v(row(bs, "current liabilities"))
@@ -371,7 +386,8 @@ def _analyst_series(ticker: str, dates: pd.DatetimeIndex) -> pd.Series:
 def _fetch_close(symbol: str, period: str) -> pd.Series | None:
     try:
         df = yf.download(symbol, period=period, progress=False, auto_adjust=True)
-        if df.empty: return None
+        if df.empty:
+            return None
         s = df["Close"].squeeze()
         s.index = pd.to_datetime(s.index).tz_localize(None)
         return s
@@ -410,7 +426,7 @@ def _compute_ticker_features(
 
         c = df["close"].values
         h = df["high"].values
-        l = df["low"].values
+        lo = df["low"].values
         vol = df["volume"].values
         vol_ma20 = pd.Series(vol).rolling(20, min_periods=1).mean().values
 
@@ -422,9 +438,9 @@ def _compute_ticker_features(
         df["sma20_vs_sma50"] = (df["sma20"] / (df["sma50"] + 1e-8) - 1).clip(-0.5, 0.5)
         df["volume_surge_20d"] = np.clip(vol / (vol_ma20 + 1e-8) - 1, -1, 3)
 
-        tr = np.maximum(h - l, np.maximum(
-            np.abs(h - np.roll(c, 1)), np.abs(l - np.roll(c, 1))))
-        tr[0] = h[0] - l[0]
+        tr = np.maximum(h - lo, np.maximum(
+            np.abs(h - np.roll(c, 1)), np.abs(lo - np.roll(c, 1))))
+        tr[0] = h[0] - lo[0]
         df["atr_pct"] = (pd.Series(tr).rolling(14, min_periods=1).mean().values / (c + 1e-8)).clip(0, 0.2)
 
         mf_mult = ((df["close"] - df["low"]) - (df["high"] - df["close"])) / (df["high"] - df["low"] + 1e-8)
@@ -468,16 +484,16 @@ def _compute_ticker_features(
         # ── Alpha158-style factors ───────────────────────────────────────────────
         close_s = pd.Series(c)
         high_s = pd.Series(h)
-        low_s = pd.Series(l)
+        low_s = pd.Series(lo)
         vol_s = pd.Series(vol)
 
         # Candlestick patterns (OHLC-based)
         df["kmid"] = ((c - df["open"].values) / (df["open"].values + 1e-8)).clip(-0.5, 0.5)
-        df["klen"] = ((h - l) / (df["open"].values + 1e-8)).clip(-0.5, 0.5)
+        df["klen"] = ((h - lo) / (df["open"].values + 1e-8)).clip(-0.5, 0.5)
         open_arr, close_arr = df["open"].values, c
         df["kup"] = ((h - np.maximum(open_arr, close_arr)) / (df["open"].values + 1e-8)).clip(-0.5, 0.5)
-        df["klow"] = ((np.minimum(open_arr, close_arr) - l) / (df["open"].values + 1e-8)).clip(-0.5, 0.5)
-        df["ksft"] = ((c * 2 - h - l) / (df["open"].values + 1e-8)).clip(-0.5, 0.5)
+        df["klow"] = ((np.minimum(open_arr, close_arr) - lo) / (df["open"].values + 1e-8)).clip(-0.5, 0.5)
+        df["ksft"] = ((c * 2 - h - lo) / (df["open"].values + 1e-8)).clip(-0.5, 0.5)
 
         # Rate of change at multiple windows (5, 10, 60 days; 21d already computed above)
         df["roc_5"] = close_s.pct_change(5).clip(-0.5, 0.5).values
@@ -681,11 +697,12 @@ def build_training_dataset(tickers: list[str], period: str = "7y") -> pd.DataFra
         try:
             df = _compute_ticker_features(ticker, period, spy_close, spy_ret_21d, sector_etf_closes)
             if df is None or len(df) < 100:
-                print("skip"); continue
+                print("skip")
+                continue
 
             c = df["close"].values
             h = df["high"].values
-            l = df["low"].values
+            lo = df["low"].values
 
             # ── Target: did trade hit TP before stop within 21 days? ─────────
             atr_abs = df["atr_pct"].values * c
@@ -697,7 +714,7 @@ def build_training_dataset(tickers: list[str], period: str = "7y") -> pd.DataFra
 
             for lag in range(1, LABEL_LOOKAHEAD_DAYS + 1):
                 future_high = np.roll(h, -lag).astype(float)
-                future_low = np.roll(l, -lag).astype(float)
+                future_low = np.roll(lo, -lag).astype(float)
                 future_high[-lag:] = np.nan
                 future_low[-lag:] = np.nan
                 undecided = labels == "NEUTRAL"
@@ -720,7 +737,8 @@ def build_training_dataset(tickers: list[str], period: str = "7y") -> pd.DataFra
             df = df[df["label"] != "NEUTRAL"]
 
             if len(df) < 30:
-                print("skip (too few)"); continue
+                print("skip (too few)")
+                continue
 
             df["label_binary"] = (df["label"] == "WIN").astype(int)
             all_dfs.append(df[["ticker", "date", "high", "low", "close", "market_regime"] + feature_cols + ["label", "label_binary"]].copy())

@@ -32,12 +32,12 @@ def main():
     tickers = args.tickers or DEFAULT_TICKERS
 
     print(f"\n{'='*60}")
-    print(f"  Master Model Training (4 Sub-Models + Math Ranker)")
+    print("  Master Model Training (4 Sub-Models + Math Ranker)")
     print(f"{'='*60}")
     print(f"  Tickers : {len(tickers)} ({', '.join(tickers[:5])}{'...' if len(tickers) > 5 else ''})")
     print(f"  Period  : {args.period}")
     print(f"  Pillars : {', '.join(PILLARS)}")
-    print(f"  Target  : 5-day forward return (ridge regression)")
+    print("  Target  : 5-day forward return (ridge regression)")
     print(f"{'='*60}\n")
 
     print("Step 1/2: Building dataset...")

@@ -96,7 +96,7 @@ def build_meta_labels(
         g = g.sort_values("date").reset_index(drop=True)
         c = g["close"].values
         h = g["high"].values
-        l = g["low"].values
+        lo = g["low"].values
         atr_pct = g[atr_col].values
 
         atr_abs = atr_pct * c
@@ -108,7 +108,7 @@ def build_meta_labels(
 
         for lag in range(1, lookahead_days + 1):
             future_high = np.roll(h, -lag).astype(float)
-            future_low = np.roll(l, -lag).astype(float)
+            future_low = np.roll(lo, -lag).astype(float)
             if lag <= n:
                 future_high[-lag:] = np.nan
                 future_low[-lag:] = np.nan
@@ -284,7 +284,7 @@ if __name__ == "__main__":
     n_win = (df_meta["meta_label"] == 1).sum()
     n_loss = (df_meta["meta_label"] == 0).sum()
 
-    print(f"\nMeta-labeling results:")
+    print("\nMeta-labeling results:")
     print(f"  Primary model 'long' calls: {n_long:,}")
     print(f"  Would hit TP (meta_label=1): {n_win:,} ({n_win/max(n_long, 1):.1%})")
     print(f"  Would hit stop (meta_label=0): {n_loss:,} ({n_loss/max(n_long, 1):.1%})")

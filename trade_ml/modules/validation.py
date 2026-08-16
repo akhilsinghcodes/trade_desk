@@ -139,7 +139,7 @@ if __name__ == "__main__":
     ]
     result = passes_validation_gate(fold_results_good, metric_key="accuracy", combined_threshold=0.55, half_threshold=0.5)
     assert result["passed"], f"Good model should pass. Result: {result}"
-    print(f"✓ Test 1 PASS: Good accuracy model")
+    print("✓ Test 1 PASS: Good accuracy model")
     print(f"  Combined: {result['combined_metric']:.4f}, Halves: {result['first_half_metric']:.4f}/{result['second_half_metric']:.4f}\n")
 
     # ── Test 2: Poor model (fails gate on accuracy) ──
@@ -151,7 +151,7 @@ if __name__ == "__main__":
     ]
     result = passes_validation_gate(fold_results_poor, metric_key="accuracy", combined_threshold=0.55, half_threshold=0.5)
     assert not result["passed"], f"Poor model should fail. Result: {result}"
-    print(f"✓ Test 2 PASS: Poor accuracy model correctly rejected")
+    print("✓ Test 2 PASS: Poor accuracy model correctly rejected")
     print(f"  Reason: {result['reason']}\n")
 
     # ── Test 3: Degrading model (passes combined but fails time split) ──
@@ -163,7 +163,7 @@ if __name__ == "__main__":
     ]
     result = passes_validation_gate(fold_results_degrade, metric_key="accuracy", combined_threshold=0.55, half_threshold=0.5)
     assert not result["passed"], f"Degrading model should fail. Result: {result}"
-    print(f"✓ Test 3 PASS: Degrading model correctly rejected")
+    print("✓ Test 3 PASS: Degrading model correctly rejected")
     print(f"  Reason: {result['reason']}\n")
 
     # ── Test 4: Sharpe ratio on correlation-like metric ──
@@ -175,14 +175,14 @@ if __name__ == "__main__":
     ]
     result = passes_validation_gate(fold_results_corr, metric_key="spearman_rho", combined_threshold=0.1, half_threshold=0.0)
     assert result["passed"], f"Good correlation model should pass. Result: {result}"
-    print(f"✓ Test 4 PASS: Spearman rho gate works")
+    print("✓ Test 4 PASS: Spearman rho gate works")
     print(f"  Combined: {result['combined_metric']:.4f}, Halves: {result['first_half_metric']:.4f}/{result['second_half_metric']:.4f}\n")
 
     # ── Test 5: Sharpe ratio utility function ──
     returns = np.array([0.001, 0.002, -0.0005, 0.0015, 0.0012])
     sharpe = sharpe_ratio(returns, annualization_factor=252)
     assert isinstance(sharpe, float) and sharpe > 0, f"Sharpe calculation failed: {sharpe}"
-    print(f"✓ Test 5 PASS: Sharpe ratio utility function")
+    print("✓ Test 5 PASS: Sharpe ratio utility function")
     print(f"  Sharpe from 5 daily returns: {sharpe:.4f}\n")
 
     print("All validation checks passed!")

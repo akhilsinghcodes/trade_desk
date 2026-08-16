@@ -20,7 +20,7 @@ def main():
     tickers = sys.argv[1:] if len(sys.argv) > 1 else DEFAULT_TICKERS[:15]
 
     print(f"\n{'='*60}")
-    print(f"  Live Scoring Pipeline")
+    print("  Live Scoring Pipeline")
     print(f"{'='*60}")
     print(f"  Tickers : {len(tickers)} ({', '.join(tickers[:5])}{'...' if len(tickers) > 5 else ''})")
     print(f"{'='*60}\n")

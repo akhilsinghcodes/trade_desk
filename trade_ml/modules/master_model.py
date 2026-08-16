@@ -35,7 +35,6 @@ import urllib.request
 import numpy as np
 import pandas as pd
 
-from modules.ml_dataset import FEATURE_COLS
 from modules.return_model import add_return_target
 
 PILLAR_FEATURES = {

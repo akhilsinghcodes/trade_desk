@@ -32,13 +32,13 @@ def main():
     tickers = args.tickers or DEFAULT_TICKERS
 
     print(f"\n{'='*60}")
-    print(f"  Forward Return Regression Pipeline")
+    print("  Forward Return Regression Pipeline")
     print(f"{'='*60}")
     print(f"  Tickers : {len(tickers)}")
     print(f"  Period  : {args.period}")
     print(f"  Target  : {args.days}-day forward return (regression)")
-    print(f"  Metric  : Spearman rank correlation OOS")
-    print(f"  CV      : Walk-forward quarterly expanding window\n")
+    print("  Metric  : Spearman rank correlation OOS")
+    print("  CV      : Walk-forward quarterly expanding window\n")
 
     print("Step 1/3: Building dataset...")
     t0 = time.time()
@@ -61,7 +61,7 @@ def main():
     summary = train_final(df, model_dir=args.output)
 
     print(f"\n{'='*60}")
-    print(f"  Results")
+    print("  Results")
     print(f"{'='*60}")
     if tc:
         print(f"  [PRIMARY]  Top-decile spread (annualized, gross): {tc['gross_annual_spread']:+.1%}")
@@ -82,7 +82,7 @@ def main():
 
     if tc:
         print(f"\n  {'='*60}")
-        print(f"  THE REAL QUESTION: does the edge survive real trading costs?")
+        print("  THE REAL QUESTION: does the edge survive real trading costs?")
         print(f"  {'='*60}")
         for bps, r in tc["cost_sweep"].items():
             verdict = "still worth running" if r["net_annual_spread"] > 0.06 else \

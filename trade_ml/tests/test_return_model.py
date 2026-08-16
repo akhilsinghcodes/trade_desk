@@ -15,7 +15,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr
-from xgboost import XGBRegressor
 
 from modules.ml_dataset import build_training_dataset, DEFAULT_TICKERS
 from modules.ml_dataset import TECHNICAL_FEATURES, FUNDAMENTAL_FEATURES, SENTIMENT_FEATURES
@@ -62,7 +61,7 @@ def add_returns(df: pd.DataFrame, days_list: list[int]) -> pd.DataFrame:
 
 def test_lookahead_sweep(df: pd.DataFrame):
     print(f"\n{'='*60}")
-    print(f"  TEST 1: Lookahead sweep")
+    print("  TEST 1: Lookahead sweep")
     print(f"{'='*60}")
     print(f"  {'Days':<6} {'Avg Rho':>10} {'Sig Folds':>12} {'Signal?':>10}")
     print(f"  {'-'*45}")
@@ -78,7 +77,7 @@ def test_lookahead_sweep(df: pd.DataFrame):
 
 def test_quintile_breakdown(df: pd.DataFrame):
     print(f"\n{'='*60}")
-    print(f"  TEST 2: Quintile breakdown (5-day, OOS)")
+    print("  TEST 2: Quintile breakdown (5-day, OOS)")
     print(f"{'='*60}")
 
     ALL_FEATS = TECHNICAL_FEATURES + FUNDAMENTAL_FEATURES + SENTIMENT_FEATURES
@@ -123,7 +122,7 @@ def test_quintile_breakdown(df: pd.DataFrame):
 
 def test_feature_ablation(df: pd.DataFrame):
     print(f"\n{'='*60}")
-    print(f"  TEST 3: Feature group ablation (5-day)")
+    print("  TEST 3: Feature group ablation (5-day)")
     print(f"{'='*60}")
     print(f"  {'Group':<25} {'Avg Rho':>10} {'Sig Folds':>12}")
     print(f"  {'-'*50}")

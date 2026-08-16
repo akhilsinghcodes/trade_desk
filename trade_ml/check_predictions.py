@@ -5,7 +5,7 @@ Usage:
   python check_predictions.py
 """
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import yfinance as yf
 import pandas as pd
@@ -83,11 +83,11 @@ def main():
 
     if n_checked < 10:
         print(f"\n{'='*60}")
-        print(f"  Check Results")
+        print("  Check Results")
         print(f"{'='*60}")
         print(f"  Updated this run: {updated_count}")
         print(f"  Total checked: {n_checked}")
-        print(f"  Status: Not enough data yet (need >= 10 checked rows)")
+        print("  Status: Not enough data yet (need >= 10 checked rows)")
         print(f"{'='*60}\n")
         conn.close()
         return
@@ -140,7 +140,7 @@ def main():
 
     # Print report
     print(f"\n{'='*60}")
-    print(f"  Check Results")
+    print("  Check Results")
     print(f"{'='*60}")
     print(f"  Updated this run: {updated_count}")
     print(f"  Total checked: {n_checked}")
@@ -151,13 +151,13 @@ def main():
     print()
 
     if hit_results:
-        print(f"  Hit Rate (top half vs bottom half by date):")
+        print("  Hit Rate (top half vs bottom half by date):")
         print(f"    Top half avg return: {avg_top:+.2%}")
         print(f"    Bottom half avg return: {avg_bottom:+.2%}")
         print(f"    Spread (top - bottom): {avg_spread:+.2%}")
         print(f"    Win rate (spread > 0): {win_rate:.0%} ({sum(1 for r in hit_results if r['spread'] > 0)}/{len(hit_results)} dates)")
     else:
-        print(f"  Hit Rate: Insufficient data (need groups per date)")
+        print("  Hit Rate: Insufficient data (need groups per date)")
 
     print(f"{'='*60}\n")
 

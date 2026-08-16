@@ -94,7 +94,8 @@ def build_pead_dataset(tickers: list[str]) -> pd.DataFrame:
             # Earnings dates with surprise data
             earnings = t.get_earnings_dates(limit=60)
             if earnings is None or earnings.empty:
-                print("no earnings"); continue
+                print("no earnings")
+                continue
 
             earnings = earnings.dropna(subset=["Reported EPS", "EPS Estimate"])
             earnings = earnings[earnings["Surprise(%)"].notna()]
@@ -102,12 +103,14 @@ def build_pead_dataset(tickers: list[str]) -> pd.DataFrame:
             earnings = earnings.sort_index()  # ascending
 
             if len(earnings) < 4:
-                print("too few quarters"); continue
+                print("too few quarters")
+                continue
 
             # Price history
             raw = yf.download(ticker, period="15y", progress=False, auto_adjust=True)
             if raw.empty or len(raw) < 100:
-                print("no price data"); continue
+                print("no price data")
+                continue
 
             price = raw["Close"].squeeze()
             price.index = pd.to_datetime(price.index).tz_localize(None)
@@ -120,13 +123,13 @@ def build_pead_dataset(tickers: list[str]) -> pd.DataFrame:
 
             c = raw_df["close"].values
             h = raw_df["high"].values
-            l = raw_df["low"].values
+            lo = raw_df["low"].values
             dates = pd.DatetimeIndex(raw_df["date"].values)
 
             # ATR series
-            tr = np.maximum(h - l, np.maximum(
-                np.abs(h - np.roll(c, 1)), np.abs(l - np.roll(c, 1))))
-            tr[0] = h[0] - l[0]
+            tr = np.maximum(h - lo, np.maximum(
+                np.abs(h - np.roll(c, 1)), np.abs(lo - np.roll(c, 1))))
+            tr[0] = h[0] - lo[0]
             atr_series = pd.Series(
                 pd.Series(tr).rolling(14, min_periods=1).mean().values / (c + 1e-8),
                 index=dates

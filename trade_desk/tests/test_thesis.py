@@ -1,4 +1,3 @@
-import pytest
 from modules.thesis import generate_thesis
 
 

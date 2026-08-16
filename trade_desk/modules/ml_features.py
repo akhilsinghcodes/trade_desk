@@ -349,7 +349,7 @@ def compute_live_features(ticker: str, period: str = "1y") -> pd.DataFrame | Non
 
         c = df["close"].values
         h = df["high"].values
-        l = df["low"].values
+        lo = df["low"].values
         vol = df["volume"].values
         vol_ma20 = pd.Series(vol).rolling(20, min_periods=1).mean().values
 
@@ -360,9 +360,9 @@ def compute_live_features(ticker: str, period: str = "1y") -> pd.DataFrame | Non
         df["sma20_vs_sma50"] = (df["sma20"] / (df["sma50"] + 1e-8) - 1).clip(-0.5, 0.5)
         df["volume_surge_20d"] = np.clip(vol / (vol_ma20 + 1e-8) - 1, -1, 3)
 
-        tr = np.maximum(h - l, np.maximum(
-            np.abs(h - np.roll(c, 1)), np.abs(l - np.roll(c, 1))))
-        tr[0] = h[0] - l[0]
+        tr = np.maximum(h - lo, np.maximum(
+            np.abs(h - np.roll(c, 1)), np.abs(lo - np.roll(c, 1))))
+        tr[0] = h[0] - lo[0]
         df["atr_pct"] = (pd.Series(tr).rolling(14, min_periods=1).mean().values / (c + 1e-8)).clip(0, 0.2)
 
         mf_mult = ((df["close"] - df["low"]) - (df["high"] - df["close"])) / (df["high"] - df["low"] + 1e-8)
@@ -397,15 +397,15 @@ def compute_live_features(ticker: str, period: str = "1y") -> pd.DataFrame | Non
 
         close_s = pd.Series(c)
         high_s = pd.Series(h)
-        low_s = pd.Series(l)
+        low_s = pd.Series(lo)
         vol_s = pd.Series(vol)
 
         df["kmid"] = ((c - df["open"].values) / (df["open"].values + 1e-8)).clip(-0.5, 0.5)
-        df["klen"] = ((h - l) / (df["open"].values + 1e-8)).clip(-0.5, 0.5)
+        df["klen"] = ((h - lo) / (df["open"].values + 1e-8)).clip(-0.5, 0.5)
         open_arr, close_arr = df["open"].values, c
         df["kup"] = ((h - np.maximum(open_arr, close_arr)) / (df["open"].values + 1e-8)).clip(-0.5, 0.5)
-        df["klow"] = ((np.minimum(open_arr, close_arr) - l) / (df["open"].values + 1e-8)).clip(-0.5, 0.5)
-        df["ksft"] = ((c * 2 - h - l) / (df["open"].values + 1e-8)).clip(-0.5, 0.5)
+        df["klow"] = ((np.minimum(open_arr, close_arr) - lo) / (df["open"].values + 1e-8)).clip(-0.5, 0.5)
+        df["ksft"] = ((c * 2 - h - lo) / (df["open"].values + 1e-8)).clip(-0.5, 0.5)
 
         df["roc_5"] = close_s.pct_change(5).clip(-0.5, 0.5).values
         df["roc_10"] = close_s.pct_change(10).clip(-0.5, 0.5).values

@@ -17,11 +17,11 @@ import warnings
 sys.path.insert(0, os.path.dirname(__file__))
 warnings.filterwarnings("ignore")
 
-import pandas as pd
-import numpy as np
-import alphalens as al
+import pandas as pd  # noqa: E402
+import numpy as np  # noqa: E402
+import alphalens as al  # noqa: E402
 
-from modules.ml_dataset import build_training_dataset, get_feature_cols, DEFAULT_TICKERS
+from modules.ml_dataset import build_training_dataset, get_feature_cols, DEFAULT_TICKERS  # noqa: E402
 
 PERIODS = (1, 5, 21, 63, 126)
 
@@ -75,7 +75,7 @@ def main():
     print(f"{'='*70}")
     print(out.round(4).to_string())
 
-    print(f"\nSaved: alphalens_ic_sweep.csv")
+    print("\nSaved: alphalens_ic_sweep.csv")
 
     print(f"\n{'='*70}")
     print("Best horizon per feature (max |IC|):")
@@ -84,7 +84,7 @@ def main():
     print(best_horizon.value_counts().to_string())
 
     print(f"\n{'='*70}")
-    print(f"Near-zero features (|IC| < 0.01 at ALL horizons — pruning candidates):")
+    print("Near-zero features (|IC| < 0.01 at ALL horizons — pruning candidates):")
     print(f"{'='*70}")
     dead = out[(out.abs() < 0.01).all(axis=1)]
     print(dead.round(4).to_string() if not dead.empty else "  none")

@@ -1,4 +1,3 @@
-import pytest
 from modules.trade_strategy import get_smart_trade_strategy
 
 
@@ -79,6 +78,10 @@ def test_near_earnings_tightens_stop():
     near = get_smart_trade_strategy(**_base_kwargs(earnings_days_away=7))
     # Near earnings: stop tightened to 3% max, and limit has earnings buffer
     assert near["stop_loss"] >= near["limit_entry"] * 0.97 - 0.01
+    # Actually tighter than the non-earnings case, not just under the cap
+    near_risk_pct = (near["limit_entry"] - near["stop_loss"]) / near["limit_entry"]
+    normal_risk_pct = (normal["limit_entry"] - normal["stop_loss"]) / normal["limit_entry"]
+    assert near_risk_pct <= normal_risk_pct
 
 
 def test_distress_zone_adds_discount():

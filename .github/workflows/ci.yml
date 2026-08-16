@@ -20,8 +20,11 @@ jobs:
       - name: Install linter
         run: pip install ruff
 
-      - name: Ruff lint
-        run: ruff check app/ modules/ --select E,F,W --ignore E501
+      - name: Ruff lint (trade_desk)
+        run: ruff check trade_desk/app/ trade_desk/modules/ --select E,F,W --ignore E501
+
+      - name: Ruff lint (trade_ml)
+        run: ruff check trade_ml/ --select E,F,W --ignore E501
 
   syntax-check:
     name: Syntax check (no heavy deps)
@@ -35,7 +38,7 @@ jobs:
 
       - name: Check all Python files parse
         run: |
-          find app modules -name "*.py" | xargs python -m py_compile
+          find trade_desk/app trade_desk/modules -name "*.py" | xargs python -m py_compile
           echo "All files compile OK"
 
   unit-tests:
@@ -52,4 +55,22 @@ jobs:
         run: pip install pytest pandas yfinance
 
       - name: Run tests
+        working-directory: trade_desk
         run: pytest tests/ -v
+
+  unit-tests-ml:
+    name: Unit tests — trade_ml (pure logic, no network)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test deps
+        run: pip install pytest pandas numpy scipy xgboost yfinance
+
+      - name: Run tests
+        working-directory: trade_ml
+        run: pytest tests/test_return_model_units.py -v
