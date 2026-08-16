@@ -1,153 +1,34 @@
-# TradeDesk
+# Trade Lab (monorepo)
 
-> A local-first stock analysis terminal. Pulls real-time data via yfinance, synthesizes 20+ technical, fundamental, and sentiment signals into a plain-English verdict with confidence score, AI-generated investment thesis, smart trade levels, portfolio tracking, and price alerts. No subscriptions. No data leaves your machine.
+Two independent sub-projects, each with its own dependencies and virtualenv:
 
-![Python](https://img.shields.io/badge/Python-3.11+-blue) ![Streamlit](https://img.shields.io/badge/UI-Streamlit-red) ![License](https://img.shields.io/badge/License-MIT-green)
-[![CI](https://github.com/akhilsinghcodes/trade_desk/actions/workflows/ci.yml/badge.svg)](https://github.com/akhilsinghcodes/trade_desk/actions/workflows/ci.yml)
+- **[trade_desk/](trade_desk/)** — Streamlit stock-research app. See [trade_desk/README.md](trade_desk/README.md).
+- **[trade_ml/](trade_ml/)** — model training/research. Trains on a broad multi-stock dataset; models are evaluated and used per-ticker, not as a cross-sectional ranker.
 
-![TradeDesk Demo](docs/demo.gif)
+See **[ARCHITECTURE.md](ARCHITECTURE.md)** for how the two connect — the
+publish/hand-off pipeline, why `trade_desk` runs the model in-process
+instead of importing `trade_ml`, and the real bugs (and fixes) hit getting
+there.
 
----
+## Setup
 
-## Features
-
-| Area | What it does |
-|---|---|
-| **Verdict** | BUY / HOLD / SELL with confidence score, weighted across technical (40%), fundamental (35%), sentiment (25%) |
-| **Smart Trade Strategy** | Limit entry, stop loss, TP1/TP2 — snapped to support/resistance, scaled by conviction and risk factors |
-| **AI Thesis** | Plain-English bull/bear case, key catalyst, key risk — synthesized from all 20+ signals |
-| **Technical** | SMA 20/50 crossover, MACD, RSI, Bollinger Bands, volume analysis, candlestick patterns |
-| **Fundamental** | P/E, EPS, FCF yield, EV/EBITDA, revenue growth, Piotroski F-Score (0-9), Altman Z-Score |
-| **Market Context** | VIX regime, 52-week rank, sector ETF momentum, relative performance vs S&P 500 |
-| **Momentum** | Price returns across 1mo / 3mo / 6mo / 1yr with trend classification |
-| **Sentiment** | News headlines scored with FinBERT (runs locally, offline after first download) |
-| **Analyst Data** | Consensus rating, price target, upside %, number of analysts |
-| **Insider Activity** | Recent buy/sell transactions with position info |
-| **Institutional Ownership** | % held by institutions and insiders |
-| **Short Interest** | Short % of float, days to cover, squeeze potential |
-| **Balance Sheet** | Debt, cash, net debt, revenue trends YoY |
-| **Earnings** | Surprise history, next earnings date, proximity warning |
-| **Options Sentiment** | Put/Call ratio with market interpretation |
-| **Portfolio** | P&L tracking, daily change, allocation pie chart, holdings correlation matrix |
-| **Watchlist** | Auto-refresh (1/5/15 min), quick verdict per ticker |
-| **Alerts** | Price alerts with Mac desktop push notifications (runs in background) |
-| **Screener** | Scan up to 20 tickers in parallel — ranked by composite score, sortable, CSV export, click-through to Analyze |
-| **Backtest** | SMA crossover walk-forward backtest — win rate, Sharpe ratio, benchmark vs SPY, transaction cost simulation |
-| **ELI5** | Plain-English glossary for every term and chart in the app |
-| **Caching** | SQLite-backed cache with per-data-type TTLs (config/settings.yaml) — fast repeat loads, stale-on-error fallback |
-| **Config** | Weights, thresholds, and TTLs tunable via `config/settings.yaml` — no code changes required |
-
----
-
-## Stack
-
-- **UI** — [Streamlit](https://streamlit.io)
-- **Data** — [yfinance](https://github.com/ranaroussi/yfinance) (free, no API key)
-- **Charts** — [Plotly](https://plotly.com)
-- **Sentiment** — [FinBERT](https://huggingface.co/ProsusAI/finbert) (local, CPU)
-- **Technical indicators** — [FinTA](https://github.com/peerchemist/finta)
-- **Backtesting** — [vectorbt](https://vectorbt.dev)
-- **Storage** — SQLite (stdlib)
-- **Notifications** — `osascript` (macOS only)
-
----
-
-## Quick Start
+Each sub-project is installed independently:
 
 ```bash
-git clone https://github.com/akhilsinghcodes/trade_desk.git
-cd trade_desk
-
-python -m venv .venv
-source .venv/bin/activate
-
-pip install -r requirements.txt
-
-streamlit run app/main.py
+cd trade_desk && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+cd trade_ml && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ```
 
-Open [http://localhost:8501](http://localhost:8501).
+You don't need both — install whichever you're working on.
 
-> **FinBERT** (~500MB) downloads on first sentiment analysis. Subsequent runs use local cache.
+## Artifact hand-off
 
----
-
-## Project Structure
-
-```
-trade_lab/
-├── app/
-│   ├── main.py              # Entry point — page config, sidebar, routing
-│   ├── views/               # One file per page
-│   │   ├── analyze.py       # Main analysis page (verdict, score bars, tabs)
-│   │   ├── screener.py      # Multi-ticker screener
-│   │   ├── watchlist.py     # Watchlist with auto-refresh
-│   │   ├── portfolio.py     # P&L tracking + correlation matrix
-│   │   ├── alerts.py        # Price alerts
-│   │   └── eli5.py          # Glossary
-│   └── services/
-│       └── analysis.py      # Orchestrates all signal modules → analysis dict
-├── modules/
-│   ├── cached_fetch.py      # SQLite-cached API wrappers with stale-on-error
-│   ├── db.py                # SQLite layer (watchlist, portfolio, alerts, cache)
-│   ├── score.py             # Continuous [-1,1] scoring with conflict detection
-│   ├── config.py            # YAML config loader (weights, thresholds, TTLs)
-│   ├── backtest.py          # Walk-forward SMA backtest + SPY benchmark
-│   ├── trade_strategy.py    # Smart trade levels (entry, SL, TP)
-│   ├── thesis.py            # AI investment thesis generator
-│   ├── piotroski.py         # Piotroski F-Score
-│   ├── altman_z.py          # Altman Z-Score (bankruptcy risk)
-│   ├── momentum.py          # Multi-timeframe price momentum
-│   ├── market_context.py    # VIX + 52-week rank
-│   ├── sector_momentum.py   # Sector ETF trend
-│   └── ...                  # 20+ other signal modules
-├── config/
-│   └── settings.yaml        # Weights, thresholds, cache TTLs
-├── data/                    # Local SQLite DB (gitignored)
-├── requirements.txt
-└── README.md
-```
-
----
-
-## Data & Privacy
-
-- All data fetched from **Yahoo Finance** via yfinance — no account or API key required
-- FinBERT sentiment model runs **entirely on your machine** — no text is sent externally
-- Portfolio, watchlist, and alerts stored in **local SQLite** — nothing leaves your laptop
-- No telemetry, no tracking, no third-party services
-
----
-
-## Signals Used in Scoring
-
-**Technical (40%)**
-SMA crossover · MACD · RSI · Bollinger Bands · Volume · Candlestick patterns · VIX regime · 52W rank · Sector momentum · Price momentum
-
-**Fundamental (35%)**
-P/E ratio · Revenue growth · Profit margin · FCF yield · EV/EBITDA · Piotroski F-Score · Altman Z-Score · Balance sheet trends · Short interest · Earnings proximity · Share dilution
-
-**Sentiment (25%)**
-FinBERT news sentiment · Analyst consensus · Insider transactions · Institutional ownership · Options put/call ratio · Relative performance vs S&P 500
-
----
-
-## Platform Notes
-
-- **macOS** — full support including desktop push notifications
-- **Linux/Windows** — all features except `osascript` notifications (alerts still visible in-app)
-- Python **3.11+** required
-
----
-
-## Disclaimer
-
-TradeDesk is for **informational and educational purposes only**. Nothing in this app constitutes financial advice. Always do your own research before making investment decisions.
-
-See [DISCLAIMER.md](DISCLAIMER.md) for the full legal notice.
-
----
-
-## License
-
-MIT — see [LICENSE](LICENSE)
+`trade_ml/publish_artifacts.py` publishes the trained model
+(`return_model.pkl`) and its backtested track record
+(`ticker_track_record.json`, `aggregate_stats.json`) into
+`trade_desk/models/`. `trade_desk` runs the model itself from there —
+in its own process, for any ticker, using its own ported copy of the
+feature-computation code (`trade_desk/modules/ml_features.py`) — not a
+live import of `trade_ml`. Run `refresh_live_predictions.py` in `trade_ml`
+to update the published snapshot with current-day data; details in
+[ARCHITECTURE.md](ARCHITECTURE.md).
