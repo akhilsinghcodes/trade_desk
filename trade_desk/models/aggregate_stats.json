@@ -1,0 +1,6 @@
+{
+  "n_tickers_tested": 149,
+  "n_positive": 113,
+  "n_significant": 57,
+  "median_rho": 0.0683
+}
