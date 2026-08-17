@@ -80,6 +80,20 @@ def init_db():
             cost_usd REAL DEFAULT 0,
             created_at REAL DEFAULT (unixepoch())
         );
+
+        CREATE TABLE IF NOT EXISTS paper_trades (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticker TEXT NOT NULL,
+            entry_date TEXT NOT NULL,
+            entry_price REAL NOT NULL,
+            pred_return_5d REAL NOT NULL,
+            pred_target_price REAL NOT NULL,
+            target_date TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open', 'hit', 'missed', 'expired')),
+            resolved_price REAL,
+            resolved_date TEXT,
+            created_at REAL DEFAULT (unixepoch())
+        );
         """)
 
 
@@ -250,6 +264,49 @@ def cache_invalidate_ticker(ticker: str):
             "DELETE FROM api_cache WHERE cache_key LIKE ? OR cache_key LIKE ?",
             (f"{t}:%", f"%:{t}:%")
         )
+
+
+# ── PAPER TRADES ──────────────────────────────────────────────────────────────
+
+def paper_add(ticker: str, entry_date: str, entry_price: float, pred_return_5d: float,
+              pred_target_price: float, target_date: str) -> dict:
+    init_db()
+    with db() as conn:
+        cur = conn.execute(
+            "INSERT INTO paper_trades (ticker, entry_date, entry_price, pred_return_5d, "
+            "pred_target_price, target_date) VALUES (?, ?, ?, ?, ?, ?)",
+            (ticker.upper(), entry_date, entry_price, pred_return_5d, pred_target_price, target_date)
+        )
+        return {"id": cur.lastrowid, "ticker": ticker.upper(), "entry_date": entry_date,
+                "entry_price": entry_price, "pred_return_5d": pred_return_5d,
+                "pred_target_price": pred_target_price, "target_date": target_date, "status": "open"}
+
+
+def paper_load(status: str | None = None) -> list[dict]:
+    init_db()
+    with db() as conn:
+        if status:
+            rows = conn.execute(
+                "SELECT * FROM paper_trades WHERE status = ? ORDER BY created_at DESC", (status,)
+            ).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM paper_trades ORDER BY created_at DESC").fetchall()
+        return [dict(r) for r in rows]
+
+
+def paper_resolve(trade_id: int, status: str, resolved_price: float, resolved_date: str):
+    init_db()
+    with db() as conn:
+        conn.execute(
+            "UPDATE paper_trades SET status = ?, resolved_price = ?, resolved_date = ? WHERE id = ?",
+            (status, resolved_price, resolved_date, trade_id)
+        )
+
+
+def paper_remove(trade_id: int):
+    init_db()
+    with db() as conn:
+        conn.execute("DELETE FROM paper_trades WHERE id = ?", (trade_id,))
 
 
 # ── LLM TELEMETRY ─────────────────────────────────────────────────────────────
