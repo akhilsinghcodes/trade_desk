@@ -98,7 +98,9 @@ def render_top_movers_page(st_obj) -> None:
         "As Of": st_obj.column_config.TextColumn(width="small"),
     }
     row_h = 35
-    table_h = lambda n_rows: row_h * (n_rows + 1) + 3
+
+    def table_h(n_rows):
+        return row_h * (n_rows + 1) + 3
 
     with col_pos:
         st_obj.subheader(f"🟢 Top {len(top)} Positive")
