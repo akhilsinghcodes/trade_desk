@@ -16,7 +16,7 @@ import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
-from modules.ml_verdict import get_ml_verdict
+from app.services.analysis import get_ml_verdict
 from modules.sp500_universe import get_sp500_tickers
 
 

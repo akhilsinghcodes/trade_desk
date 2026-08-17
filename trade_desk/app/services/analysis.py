@@ -2,6 +2,8 @@
 import sys
 import os
 
+import streamlit as st
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from modules.indicators import add_common_indicators
@@ -13,7 +15,7 @@ from modules.volume import add_volume_indicators, volume_signal
 from modules.thesis import generate_thesis
 from modules.trade_strategy import get_smart_trade_strategy as _smart_strat
 from modules.llm_strategy import generate_trade_rationale
-from modules.ml_verdict import get_ml_verdict
+from modules.ml_verdict import get_ml_verdict as _get_ml_verdict
 from modules.alert_suggestions import suggest_alerts
 from modules.fundamentals import score_fundamentals
 from modules.analyst import score_analyst
@@ -42,6 +44,15 @@ from modules.cached_fetch import (
     cached_valuation_advanced, cached_sector_momentum, cached_dilution_risk,
     cached_altman_z, cached_momentum, cached_pmo_rs, cached_vol_ratio,
 )
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def get_ml_verdict(ticker: str) -> dict | None:
+    """Cached wrapper around modules.ml_verdict.get_ml_verdict — cached here,
+    at the Streamlit app layer, so the underlying module stays streamlit-free
+    and testable in CI without streamlit installed. 15min TTL: same-session
+    reruns/re-clicks don't re-hit yfinance."""
+    return _get_ml_verdict(ticker)
 
 
 def run_analysis(ticker: str, period: str, interval: str = "1d", llm_backend: str = "local") -> dict:

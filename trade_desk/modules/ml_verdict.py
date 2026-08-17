@@ -14,7 +14,6 @@ from pathlib import Path
 
 import joblib
 import pandas as pd
-import streamlit as st
 
 from modules.ml_features import compute_live_features, FEATURE_COLS
 
@@ -33,11 +32,11 @@ def _load_model():
     return joblib.load(_MODELS_DIR / "return_model.pkl")
 
 
-@st.cache_data(ttl=900, show_spinner=False)
 def get_ml_verdict(ticker: str) -> dict | None:
     """Live prediction for any ticker with enough price history. Returns
     None only if feature computation fails (e.g. brand-new listing).
-    Cached 15min — same-session reruns/re-clicks don't re-hit yfinance."""
+    No caching here — this module stays streamlit-free/testable in CI.
+    Callers in the Streamlit app layer wrap this with st.cache_data."""
     model_path = _MODELS_DIR / "return_model.pkl"
     if not model_path.exists():
         return None
