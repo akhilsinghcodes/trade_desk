@@ -2,8 +2,16 @@
 import streamlit as st
 import sys
 import os
+import logging
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+
+# Streamlit's hot-reload watcher walks every loaded module's submodules to
+# find file paths. Once modules.news lazily imports `transformers` (its
+# sentiment pipeline), the watcher trips on transformers' optional vision
+# submodules that need torchvision (not installed, not needed — we never
+# use those models). Harmless probe failures, but noisy; silenced here.
+logging.getLogger("streamlit.watcher.local_sources_watcher").setLevel(logging.ERROR)
 
 from modules.db import wl_load, wl_add, cache_invalidate_ticker, init_db, alerts_load, port_load, alerts_check
 from modules.fetch import get_ohlcv

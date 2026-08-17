@@ -3,6 +3,10 @@
 Uses modules.ml_verdict.get_ml_verdict (same live inference path as the
 Analyze page) instead of trade_ml's pre-published latest_predictions.json,
 so numbers here always match what Analyze shows for the same ticker.
+
+Ticker universe comes from modules.sp500_universe (fetched from Wikipedia,
+cached) — deliberately NOT trade_ml/tickers.txt, which is train.py's input
+and must stay decoupled from what this page scans.
 """
 import os
 import sys
@@ -13,17 +17,11 @@ import pandas as pd
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from modules.ml_verdict import get_ml_verdict
-
-TICKERS_PATH = os.path.join(
-    os.path.dirname(__file__), "..", "..", "..", "trade_ml", "tickers.txt"
-)
+from modules.sp500_universe import get_sp500_tickers
 
 
 def _load_tickers() -> list[str]:
-    if not os.path.exists(TICKERS_PATH):
-        return []
-    with open(TICKERS_PATH) as f:
-        return [t.strip() for t in f if t.strip()]
+    return get_sp500_tickers()
 
 
 def _run_live_predictions(tickers: list[str], progress_cb) -> pd.DataFrame:
@@ -56,7 +54,7 @@ def render_top_movers_page(st_obj) -> None:
 
     tickers = _load_tickers()
     if not tickers:
-        st_obj.warning(f"No tickers found at `{TICKERS_PATH}`.")
+        st_obj.warning("Couldn't fetch the S&P 500 ticker list (Wikipedia fetch failed, no cache available).")
         return
 
     if "top_movers_df" not in st_obj.session_state:
