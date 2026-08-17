@@ -147,21 +147,21 @@ def _generate_bull_points(good_signals: list, analyst_data: dict, piotroski_data
     covered_labels = [label.lower() for label, _ in good_signals]
 
     # Analyst upside
-    if analyst_data and analyst_data.get("upside_pct", 0) > 20:
+    if analyst_data and (analyst_data.get("upside_pct") or 0) > 20:
         if not any("analyst" in c for c in covered_labels):
-            upside = analyst_data.get("upside_pct", 0)
+            upside = (analyst_data.get("upside_pct") or 0)
             bull_points.append(f"✅ Analyst Coverage: {upside:.1f}% upside target implies significant room")
 
     # Piotroski score
-    if piotroski_data and piotroski_data.get("score", 0) >= 7:
+    if piotroski_data and (piotroski_data.get("score") or 0) >= 7:
         if not any("piotroski" in c for c in covered_labels):
-            score = piotroski_data.get("score", 0)
+            score = (piotroski_data.get("score") or 0)
             bull_points.append(f"✅ Piotroski F-Score: {int(score)}/9 shows strong financial health")
 
     # FCF yield
-    if fundamentals and fundamentals.get("fcf_yield", 0) > 0.05:
+    if fundamentals and (fundamentals.get("fcf_yield") or 0) > 0.05:
         if not any("fcf" in c for c in covered_labels):
-            fcf = fundamentals.get("fcf_yield", 0) * 100
+            fcf = (fundamentals.get("fcf_yield") or 0) * 100
             bull_points.append(f"✅ Free Cash Flow: {fcf:.1f}% yield provides downside cushion")
 
     # Positive momentum
@@ -200,7 +200,7 @@ def _generate_bear_points(warning_signals: list, valuation_adv: dict, earnings_i
     # High valuation
     if valuation_adv and (valuation_adv.get("ev_ebitda") or 0) > 25:
         if not any("valuation" in c for c in covered_labels):
-            ev = valuation_adv.get("ev_ebitda", 0)
+            ev = (valuation_adv.get("ev_ebitda") or 0)
             bear_points.append(f"⚠️ Valuation: EV/EBITDA {ev:.1f}x well above historical average")
 
     # Earnings proximity
@@ -239,12 +239,12 @@ def _identify_key_risk(warning_signals: list, earnings_info: dict, altman_data: 
 
     # Altman Z-Score distress
     if altman_data and altman_data.get("zone") == "distress" and altman_data.get("z_score") is not None:
-        score = altman_data.get("z_score", 0)
+        score = (altman_data.get("z_score") or 0)
         return f"Altman Z-Score {score:.2f} signals financial distress; bankruptcy risk elevated"
 
     # High valuation
     if valuation_adv and (valuation_adv.get("ev_ebitda") or 0) > 25:
-        ev = valuation_adv.get("ev_ebitda", 0)
+        ev = (valuation_adv.get("ev_ebitda") or 0)
         return f"Valuation premium (EV/EBITDA {ev:.1f}x) leaves little room for disappointment"
 
     # Sector downtrend
@@ -259,8 +259,8 @@ def _identify_key_risk(warning_signals: list, earnings_info: dict, altman_data: 
                 return text
 
     # High short interest
-    if short_data and short_data.get("short_pct_float", 0) > 15:
-        si = short_data.get("short_pct_float", 0)
+    if short_data and (short_data.get("short_pct_float") or 0) > 15:
+        si = (short_data.get("short_pct_float") or 0)
         return f"High short interest ({si:.1f}%) indicates bearish positioning and crowding"
 
     # Fallback
@@ -278,9 +278,9 @@ def _identify_key_catalyst(good_signals: list, analyst_data: dict, momentum_data
     """
 
     # Analyst upside (highest priority)
-    if analyst_data and analyst_data.get("upside_pct", 0) > 30:
-        upside = analyst_data.get("upside_pct", 0)
-        target = analyst_data.get("target_price", 0)
+    if analyst_data and (analyst_data.get("upside_pct") or 0) > 30:
+        upside = (analyst_data.get("upside_pct") or 0)
+        target = (analyst_data.get("target_price") or 0)
         return f"Analyst consensus {upside:.1f}% upside to ${target:.2f} target reflects significant value"
 
     # Strong momentum
@@ -290,18 +290,18 @@ def _identify_key_catalyst(good_signals: list, analyst_data: dict, momentum_data
         return f"Strong price momentum{yr_str} suggests trend continuation"
 
     # Earnings beat history
-    if fundamentals and fundamentals.get("earnings_growth_pct", 0) > 20:
-        growth = fundamentals.get("earnings_growth_pct", 0)
+    if fundamentals and (fundamentals.get("earnings_growth_pct") or 0) > 20:
+        growth = (fundamentals.get("earnings_growth_pct") or 0)
         return f"Earnings growth of {growth:.1f}% YoY with track record of beat-and-raise"
 
     # Low short interest + rising price
-    if short_data and short_data.get("short_pct_float", 0) < 3:
+    if short_data and (short_data.get("short_pct_float") or 0) < 3:
         if momentum_data and momentum_data.get("trend", "").lower() in ("up", "strong_up"):
             return "Low short interest with rising price reduces squeeze upside but confirms trend"
 
     # FCF yield
-    if fundamentals and fundamentals.get("fcf_yield", 0) > 0.05:
-        fcf = fundamentals.get("fcf_yield", 0) * 100
+    if fundamentals and (fundamentals.get("fcf_yield") or 0) > 0.05:
+        fcf = (fundamentals.get("fcf_yield") or 0) * 100
         return f"Strong free cash flow yield ({fcf:.1f}%) supports buybacks and dividend growth"
 
     # Fallback to good signals
@@ -323,17 +323,17 @@ def _generate_one_liner(company_name: str, ticker: str, verdict: str, fundamenta
 
     # Key fundamental fact
     if fundamentals:
-        margin = fundamentals.get("profit_margin", 0) * 100
+        margin = (fundamentals.get("profit_margin") or 0) * 100
         if margin > 20:
             facts.append(f"{margin:.0f}% margins")
 
-        growth = fundamentals.get("revenue_growth_pct", 0)
+        growth = (fundamentals.get("revenue_growth_pct") or 0)
         if growth > 0:
             facts.append(f"{growth:.0f}% revenue growth")
 
     # Valuation concern
     if fundamentals:
-        pe = fundamentals.get("pe_ratio", 0)
+        pe = (fundamentals.get("pe_ratio") or 0)
         if pe > 30:
             facts.append(f"{pe:.0f}x P/E (pricey)")
 
@@ -344,8 +344,8 @@ def _generate_one_liner(company_name: str, ticker: str, verdict: str, fundamenta
 
     # Analyst view
     analyst_view = ""
-    if analyst_data and analyst_data.get("upside_pct", 0) > 0:
-        upside = analyst_data.get("upside_pct", 0)
+    if analyst_data and (analyst_data.get("upside_pct") or 0) > 0:
+        upside = (analyst_data.get("upside_pct") or 0)
         if upside > 20:
             analyst_view = f"Analysts bullish (+{upside:.1f}% target)."
         elif upside < -10:

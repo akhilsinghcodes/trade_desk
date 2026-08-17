@@ -19,6 +19,13 @@ from modules.ml_features import compute_live_features, FEATURE_COLS
 
 _MODELS_DIR = Path(__file__).parent.parent / "models"
 
+# Above this fraction of missing features, treat the prediction as unreliable —
+# XGBoost doesn't crash on NaN inputs (routes them down a learned default
+# branch), so a mostly-empty feature vector (e.g. from a Yahoo API outage
+# mid-fetch) still returns a confident-looking number with no signal it's
+# built on garbage. Flagged, not silently trusted.
+_LOW_CONFIDENCE_NAN_THRESHOLD = 0.25
+
 
 def _load_json(name: str) -> dict:
     path = _MODELS_DIR / name
@@ -47,13 +54,19 @@ def get_ml_verdict(ticker: str) -> dict | None:
 
     model = _load_model()
     X = live[FEATURE_COLS].tail(1).apply(pd.to_numeric, errors="coerce")
+    nan_pct = float(X.isna().mean().iloc[0])
     pred = float(model.predict(X)[0])
     as_of = str(pd.Timestamp(live.iloc[-1]["date"]).date())
 
     track_record = _load_json("ticker_track_record.json")
     track = track_record.get(ticker)
 
-    result = {"pred_return_5d": round(pred, 5), "as_of": as_of}
+    result = {
+        "pred_return_5d": round(pred, 5),
+        "as_of": as_of,
+        "low_confidence": nan_pct > _LOW_CONFIDENCE_NAN_THRESHOLD,
+        "missing_feature_pct": round(nan_pct, 3),
+    }
 
     if track is not None:
         result.update({

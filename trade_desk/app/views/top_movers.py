@@ -44,8 +44,17 @@ def _run_live_predictions(tickers: list[str], progress_cb) -> pd.DataFrame:
                 "Ticker": ticker,
                 "Pred 5D Return": verdict["pred_return_5d"] * 100,
                 "As Of": verdict["as_of"],
+                "⚠️": "⚠️" if verdict.get("low_confidence") else "",
             })
     return pd.DataFrame(rows)
+
+
+def _refresh_ticker(ticker: str) -> dict | None:
+    """Bypass the cache for one ticker only — re-fetches live data without
+    re-running the other 500+ tickers, so a bad reading (e.g. from a Yahoo
+    API hiccup mid-batch) can be corrected without another full scan."""
+    get_ml_verdict.clear(ticker)
+    return get_ml_verdict(ticker)
 
 
 def render_top_movers_page(st_obj) -> None:
@@ -83,6 +92,36 @@ def render_top_movers_page(st_obj) -> None:
 
     st_obj.caption(f"{len(df)}/{len(tickers)} tickers scored · as of {df['As Of'].iloc[0]}")
 
+    n_low_conf = int((df["⚠️"] == "⚠️").sum())
+    if n_low_conf:
+        st_obj.warning(
+            f"⚠️ {n_low_conf} ticker(s) have >25% missing features (likely a Yahoo API hiccup mid-scan) — "
+            "prediction may be unreliable. Refresh a specific ticker below instead of re-running all 500+."
+        )
+
+    col_refresh, col_refresh_btn = st_obj.columns([4, 1])
+    with col_refresh:
+        refresh_ticker = st_obj.text_input(
+            "Refresh a single ticker", placeholder="e.g. WDAY", label_visibility="collapsed"
+        ).upper().strip()
+    with col_refresh_btn:
+        if st_obj.button("🔄 Refresh ticker", key="refresh_single_ticker") and refresh_ticker:
+            verdict = _refresh_ticker(refresh_ticker)
+            if verdict is None:
+                st_obj.error(f"Couldn't refresh {refresh_ticker}.")
+            else:
+                new_row = {
+                    "Ticker": refresh_ticker,
+                    "Pred 5D Return": verdict["pred_return_5d"] * 100,
+                    "As Of": verdict["as_of"],
+                    "⚠️": "⚠️" if verdict.get("low_confidence") else "",
+                }
+                df = df[df["Ticker"] != refresh_ticker]
+                df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+                st_obj.session_state.top_movers_df = df
+                st_obj.success(f"Refreshed {refresh_ticker}: {verdict['pred_return_5d']:+.2%}")
+                st_obj.rerun()
+
     n = st_obj.slider("Show top N per side", min_value=5, max_value=100, value=25, step=5)
 
     df_sorted = df.sort_values("Pred 5D Return", ascending=False)
@@ -94,6 +133,7 @@ def render_top_movers_page(st_obj) -> None:
         "Pred 5D Return": st_obj.column_config.NumberColumn(format="%.2f%%", width="small"),
         "Ticker": st_obj.column_config.TextColumn(width="small"),
         "As Of": st_obj.column_config.TextColumn(width="small"),
+        "⚠️": st_obj.column_config.TextColumn(width="small", help="Low confidence — >25% of model input features were missing"),
     }
     row_h = 35
 

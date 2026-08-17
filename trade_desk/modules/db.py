@@ -92,9 +92,14 @@ def init_db():
             status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open', 'hit', 'missed', 'expired')),
             resolved_price REAL,
             resolved_date TEXT,
+            low_confidence INTEGER DEFAULT 0,
             created_at REAL DEFAULT (unixepoch())
         );
         """)
+        try:
+            conn.execute("ALTER TABLE paper_trades ADD COLUMN low_confidence INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass  # column already exists (pre-dates this migration)
 
 
 # ── WATCHLIST ──────────────────────────────────────────────────────────────────
@@ -269,17 +274,36 @@ def cache_invalidate_ticker(ticker: str):
 # ── PAPER TRADES ──────────────────────────────────────────────────────────────
 
 def paper_add(ticker: str, entry_date: str, entry_price: float, pred_return_5d: float,
-              pred_target_price: float, target_date: str) -> dict:
+              pred_target_price: float, target_date: str, low_confidence: bool = False) -> dict:
     init_db()
     with db() as conn:
         cur = conn.execute(
             "INSERT INTO paper_trades (ticker, entry_date, entry_price, pred_return_5d, "
-            "pred_target_price, target_date) VALUES (?, ?, ?, ?, ?, ?)",
-            (ticker.upper(), entry_date, entry_price, pred_return_5d, pred_target_price, target_date)
+            "pred_target_price, target_date, low_confidence) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (ticker.upper(), entry_date, entry_price, pred_return_5d, pred_target_price,
+             target_date, int(low_confidence))
         )
         return {"id": cur.lastrowid, "ticker": ticker.upper(), "entry_date": entry_date,
                 "entry_price": entry_price, "pred_return_5d": pred_return_5d,
-                "pred_target_price": pred_target_price, "target_date": target_date, "status": "open"}
+                "pred_target_price": pred_target_price, "target_date": target_date,
+                "status": "open", "low_confidence": int(low_confidence)}
+
+
+def paper_relock(trade_id: int, entry_date: str, entry_price: float, pred_return_5d: float,
+                  pred_target_price: float, target_date: str, low_confidence: bool = False):
+    """Re-lock an existing open trade with a fresh price/prediction — used when
+    the original entry was flagged low-confidence (e.g. built on data from a
+    Yahoo API hiccup) and the user wants to correct it in place instead of
+    losing history by remove-and-re-add."""
+    init_db()
+    with db() as conn:
+        conn.execute(
+            "UPDATE paper_trades SET entry_date = ?, entry_price = ?, pred_return_5d = ?, "
+            "pred_target_price = ?, target_date = ?, low_confidence = ?, status = 'open', "
+            "resolved_price = NULL, resolved_date = NULL WHERE id = ?",
+            (entry_date, entry_price, pred_return_5d, pred_target_price, target_date,
+             int(low_confidence), trade_id)
+        )
 
 
 def paper_load(status: str | None = None) -> list[dict]:

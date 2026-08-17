@@ -12,9 +12,9 @@ import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
-from modules.db import paper_add, paper_load, paper_resolve, paper_remove
+from modules.db import paper_add, paper_load, paper_resolve, paper_remove, paper_relock
 from modules.cached_fetch import cached_ohlcv
-from modules.ml_verdict import get_ml_verdict
+from app.services.analysis import get_ml_verdict
 
 _TRADING_DAYS_5D = timedelta(days=7)  # ponytail: calendar-day approx of 5 trading days, switch to a market calendar if weekends/holidays skew results
 
@@ -61,8 +61,11 @@ def render_paper_trading_page(st_obj) -> None:
             target_price = price * (1 + verdict["pred_return_5d"])
             entry_date = datetime.now().date()
             target_date = entry_date + _TRADING_DAYS_5D
-            paper_add(ticker, str(entry_date), price, verdict["pred_return_5d"], target_price, str(target_date))
-            st_obj.success(f"Locked {ticker} @ ${price:.2f} → target ${target_price:.2f} ({verdict['pred_return_5d']:+.2%}) by {target_date}")
+            low_conf = verdict.get("low_confidence", False)
+            paper_add(ticker, str(entry_date), price, verdict["pred_return_5d"], target_price,
+                      str(target_date), low_confidence=low_conf)
+            warn = " ⚠️ low confidence — >25% of model inputs were missing" if low_conf else ""
+            st_obj.success(f"Locked {ticker} @ ${price:.2f} → target ${target_price:.2f} ({verdict['pred_return_5d']:+.2%}) by {target_date}{warn}")
             st_obj.rerun()
 
     st_obj.divider()
@@ -90,9 +93,17 @@ def render_paper_trading_page(st_obj) -> None:
                 "Pred Return": t["pred_return_5d"] * 100,
                 "Progress to Target": progress,
                 "Target Date": t["target_date"],
+                "⚠️": "⚠️" if t.get("low_confidence") else "",
                 "id": t["id"],
             })
         df = pd.DataFrame(rows)
+        n_low_conf = sum(1 for t in open_trades if t.get("low_confidence"))
+        if n_low_conf:
+            st_obj.warning(
+                f"⚠️ {n_low_conf} open trade(s) were locked with >25% missing model inputs "
+                "(e.g. a Yahoo API hiccup at entry time) — prediction may be unreliable. "
+                "Use Re-lock below to redo the entry with fresh data."
+            )
         st_obj.dataframe(
             df.drop(columns=["id"]),
             hide_index=True,
@@ -103,12 +114,34 @@ def render_paper_trading_page(st_obj) -> None:
                 "Target $": st_obj.column_config.NumberColumn(format="$%.2f"),
                 "Pred Return": st_obj.column_config.NumberColumn(format="%.2f%%"),
                 "Progress to Target": st_obj.column_config.ProgressColumn(min_value=0, max_value=1, format=""),
+                "⚠️": st_obj.column_config.TextColumn(help="Low confidence — >25% of model input features were missing at entry"),
             },
         )
         for t in open_trades:
-            if st_obj.button(f"🗑 Remove {t['ticker']} ({t['entry_date']})", key=f"rm_paper_{t['id']}"):
-                paper_remove(t["id"])
-                st_obj.rerun()
+            col_rm, col_relock = st_obj.columns(2)
+            with col_rm:
+                if st_obj.button(f"🗑 Remove {t['ticker']} ({t['entry_date']})", key=f"rm_paper_{t['id']}"):
+                    paper_remove(t["id"])
+                    st_obj.rerun()
+            with col_relock:
+                relock_label = f"🔄 Re-lock {t['ticker']}" + (" (was flagged)" if t.get("low_confidence") else "")
+                if st_obj.button(relock_label, key=f"relock_paper_{t['id']}"):
+                    get_ml_verdict.clear(t["ticker"])
+                    new_price = _current_price(t["ticker"])
+                    new_verdict = get_ml_verdict(t["ticker"])
+                    if new_price is None or new_verdict is None:
+                        st_obj.error(f"Couldn't refresh {t['ticker']}.")
+                    else:
+                        new_target = new_price * (1 + new_verdict["pred_return_5d"])
+                        new_entry_date = datetime.now().date()
+                        new_target_date = new_entry_date + _TRADING_DAYS_5D
+                        paper_relock(
+                            t["id"], str(new_entry_date), new_price, new_verdict["pred_return_5d"],
+                            new_target, str(new_target_date),
+                            low_confidence=new_verdict.get("low_confidence", False),
+                        )
+                        st_obj.success(f"Re-locked {t['ticker']} @ ${new_price:.2f} ({new_verdict['pred_return_5d']:+.2%})")
+                        st_obj.rerun()
     else:
         st_obj.info("No open paper trades. Lock one in above.")
 
