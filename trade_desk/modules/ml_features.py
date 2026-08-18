@@ -13,14 +13,25 @@ training on past dates). For a live snapshot of today, the current-value
 fundamentals already computed below are already point-in-time correct.
 """
 import warnings
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Callable
+
 import numpy as np
 import pandas as pd
 import yfinance as yf
 from scipy.stats import linregress
 
 from modules.indicators import add_common_indicators
+from modules.db import cache_get, cache_set
 
 warnings.filterwarnings("ignore")
+
+# SPY and each sector ETF get refetched independently by every ticker that
+# needs them — under a concurrent batch (e.g. Top Movers' 10-worker scan)
+# that's 10+ simultaneous duplicate requests for the identical data, which
+# both wastes calls and makes Yahoo's rate limiting/crumb errors more likely
+# in the first place. Cached here so a batch run shares one fetch instead.
+_MARKET_CLOSE_CACHE_TTL = 1800  # 30min — daily-bar indicators don't need fresher
 
 SECTOR_ETF_MAP = {
     "Technology": "XLK", "Financial Services": "XLF", "Healthcare": "XLV",
@@ -62,12 +73,23 @@ FEATURE_COLS = TECHNICAL_FEATURES + FUNDAMENTAL_FEATURES + SENTIMENT_FEATURES
 
 
 def _fetch_close(symbol: str, period: str) -> pd.Series | None:
+    cache_key = f"ml_features_close:{symbol}:{period}"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        s = pd.Series(cached["values"], index=pd.to_datetime(cached["index"]))
+        return s
+
     try:
         df = yf.download(symbol, period=period, progress=False, auto_adjust=True)
         if df.empty:
             return None
         s = df["Close"].squeeze()
         s.index = pd.to_datetime(s.index).tz_localize(None)
+        cache_set(
+            cache_key,
+            {"index": [d.isoformat() for d in s.index], "values": s.tolist()},
+            _MARKET_CLOSE_CACHE_TTL,
+        )
         return s
     except Exception:
         return None
@@ -332,13 +354,78 @@ def _rolling_ols_metrics(x, window):
         return np.nan, np.nan, np.nan
 
 
-def compute_live_features(ticker: str, period: str = "1y") -> pd.DataFrame | None:
+def _fetch_batch_ohlcv(tickers: list[str], period: str) -> dict[str, pd.DataFrame]:
+    """One yf.download call for many tickers' OHLCV instead of one call per
+    ticker — the single biggest source of redundant concurrent requests in a
+    full-universe scan (e.g. Top Movers), which was helping trigger Yahoo's
+    rate limiter. Fundamentals/insider/analyst data still go through
+    per-ticker calls inside compute_live_features — yfinance has no batch API
+    for those."""
+    try:
+        raw = yf.download(list(tickers), period=period, progress=False,
+                           auto_adjust=True, group_by="ticker")
+    except Exception:
+        return {}
+    if raw.empty:
+        return {}
+    result = {}
+    for t in tickers:
+        try:
+            result[t] = raw[t] if isinstance(raw.columns, pd.MultiIndex) else raw
+        except KeyError:
+            result[t] = pd.DataFrame()
+    return result
+
+
+def compute_live_features_batch(tickers: list[str], period: str = "1y",
+                                 max_workers: int = 10,
+                                 progress_cb: Callable[[int, int, str], None] | None = None,
+                                 ) -> dict[str, pd.DataFrame | None]:
+    """Batch entry point for scanning many tickers — fetches all OHLCV in one
+    request (eliminating N redundant price downloads), then computes each
+    ticker's remaining per-ticker-only features (fundamentals, insider,
+    analyst — no batch API exists for these in yfinance) concurrently, same
+    as before. Use this instead of calling compute_live_features in a loop
+    when scoring more than a handful of tickers.
+
+    progress_cb(completed, total, ticker), if given, fires as each ticker's
+    fundamentals step finishes — the OHLCV batch call itself is fast enough
+    (one request) that it isn't worth granular progress on its own."""
+    batch = _fetch_batch_ohlcv(tickers, period)
+    results: dict[str, pd.DataFrame | None] = {}
+    total = len(tickers)
+    completed = 0
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(compute_live_features, t, period, batch.get(t)): t
+            for t in tickers
+        }
+        for future in as_completed(futures):
+            t = futures[future]
+            completed += 1
+            if progress_cb:
+                progress_cb(completed, total, t)
+            try:
+                results[t] = future.result()
+            except Exception:
+                results[t] = None
+    return results
+
+
+def compute_live_features(ticker: str, period: str = "1y",
+                           _prefetched_raw: pd.DataFrame | None = None) -> pd.DataFrame | None:
     """Full feature-complete DataFrame for one ticker (all rows in period).
     Caller takes the last row for a live prediction. Returns None if the
-    ticker has insufficient price history."""
+    ticker has insufficient price history.
+
+    _prefetched_raw: pass OHLCV already fetched via _fetch_batch_ohlcv (batch
+    scans) to skip this ticker's own yf.download call for price data."""
     try:
-        raw = yf.download(ticker, period=period, progress=False, auto_adjust=True)
-        if raw.empty or len(raw) < 100:
+        if _prefetched_raw is not None:
+            raw = _prefetched_raw
+        else:
+            raw = yf.download(ticker, period=period, progress=False, auto_adjust=True)
+        if raw is None or raw.empty or len(raw) < 100:
             return None
 
         df = raw.reset_index()
@@ -378,19 +465,24 @@ def compute_live_features(ticker: str, period: str = "1y") -> pd.DataFrame | Non
             spy_a = spy_ret_21d.reindex(df["date"]).values
             df["alpha_21d"] = (stock_ret_21d - spy_a).clip(-0.5, 0.5)
         else:
-            df["alpha_21d"] = stock_ret_21d
+            # SPY fetch failed (e.g. Yahoo rate-limited under concurrent load) —
+            # NaN, not a silent substitute. Raw return is NOT the same signal as
+            # market-relative alpha and was previously fed to the model as if it
+            # were, producing wrong-but-plausible-looking predictions with no
+            # trace it happened.
+            df["alpha_21d"] = np.nan
 
         try:
-            sector = yf.Ticker(ticker).info.get("sector")
+            sector = (yf.Ticker(ticker).info or {}).get("sector")
             etf = SECTOR_ETF_MAP.get(sector)
             sec_close = _fetch_close(etf, period) if etf else None
             if sec_close is not None:
                 sec_ret = sec_close.pct_change(21).reindex(df["date"]).values
                 df["sector_alpha_21d"] = (stock_ret_21d - sec_ret).clip(-0.5, 0.5)
             else:
-                df["sector_alpha_21d"] = df["alpha_21d"]
+                df["sector_alpha_21d"] = np.nan
         except Exception:
-            df["sector_alpha_21d"] = df["alpha_21d"]
+            df["sector_alpha_21d"] = np.nan
 
         high_52w = df["close"].rolling(252, min_periods=252).max()
         df["high_52w_proximity"] = (df["close"] / high_52w.clip(lower=1e-8)).clip(0, 1)

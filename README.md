@@ -3,7 +3,7 @@
 Two independent sub-projects, each with its own dependencies and virtualenv:
 
 - **[trade_desk/](trade_desk/)** — Streamlit stock-research app. See [trade_desk/README.md](trade_desk/README.md).
-- **[trade_ml/](trade_ml/)** — model training/research. Trains on a broad multi-stock dataset; models are evaluated and used per-ticker, not as a cross-sectional ranker.
+- **[trade_ml/](trade_ml/)** — model training/research. Trains on a broad multi-stock dataset; models are evaluated and used per-ticker, not as a cross-sectional ranker. See [trade_ml/README.md](trade_ml/README.md).
 
 See **[ARCHITECTURE.md](ARCHITECTURE.md)** for how the two connect — the
 publish/hand-off pipeline, why `trade_desk` runs the model in-process
