@@ -10,13 +10,13 @@ and must stay decoupled from what this page scans.
 """
 import os
 import sys
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from app.services.analysis import get_ml_verdict
+from modules.ml_verdict import get_ml_verdict_batch
 from modules.sp500_universe import get_sp500_tickers
 
 
@@ -25,27 +25,18 @@ def _load_tickers() -> list[str]:
 
 
 def _run_live_predictions(tickers: list[str], progress_cb) -> pd.DataFrame:
+    verdicts = get_ml_verdict_batch(tickers, progress_cb=progress_cb)
+
     rows = []
-    total = len(tickers)
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        futures = {executor.submit(get_ml_verdict, t): t for t in tickers}
-        completed = 0
-        for future in as_completed(futures):
-            ticker = futures[future]
-            completed += 1
-            progress_cb(completed, total, ticker)
-            try:
-                verdict = future.result(timeout=30)
-            except Exception:
-                continue
-            if verdict is None:
-                continue
-            rows.append({
-                "Ticker": ticker,
-                "Pred 5D Return": verdict["pred_return_5d"] * 100,
-                "As Of": verdict["as_of"],
-                "⚠️": "⚠️" if verdict.get("low_confidence") else "",
-            })
+    for ticker, verdict in verdicts.items():
+        if verdict is None:
+            continue
+        rows.append({
+            "Ticker": ticker,
+            "Pred 5D Return": verdict["pred_return_5d"] * 100,
+            "As Of": verdict["as_of"],
+            "⚠️": "⚠️" if verdict.get("low_confidence") else "",
+        })
     return pd.DataFrame(rows)
 
 

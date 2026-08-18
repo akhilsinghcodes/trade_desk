@@ -113,7 +113,7 @@ def render_paper_trading_page(st_obj) -> None:
                 "Current $": st_obj.column_config.NumberColumn(format="$%.2f"),
                 "Target $": st_obj.column_config.NumberColumn(format="$%.2f"),
                 "Pred Return": st_obj.column_config.NumberColumn(format="%.2f%%"),
-                "Progress to Target": st_obj.column_config.ProgressColumn(min_value=0, max_value=1, format=""),
+                "Progress to Target": st_obj.column_config.ProgressColumn(min_value=-1, max_value=1, format=""),
                 "⚠️": st_obj.column_config.TextColumn(help="Low confidence — >25% of model input features were missing at entry"),
             },
         )
